@@ -126,9 +126,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "desktop/src/icon.png",
-      "uninstallerIcon": "desktop/src/icon.png"
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
