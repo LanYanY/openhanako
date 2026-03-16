@@ -193,11 +193,12 @@ export function syncFavoritesToModelsJson(configPath, opts = {}) {
     for (const mid of targetModelIds) {
       if (existingModels.has(mid)) {
         const existing = { ...existingModels.get(mid) };
-        // name 保留用户编辑过的值，只在缺失时用 humanizeName 兜底
         if (!existing.name) existing.name = humanizeName(mid);
+        // 补全 input 字段（旧版本创建的条目可能缺失，Pi SDK 默认 ["text"] 会过滤图片）
+        if (!existing.input) existing.input = ["text", "image"];
         modelList.push(existing);
       } else {
-        modelList.push(generateModelDefaults(mid)); // 生成默认值
+        modelList.push(generateModelDefaults(mid));
       }
     }
 
