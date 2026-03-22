@@ -13,7 +13,7 @@
 <p align="center"><a href="README_CN.md">中文版</a></p>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
 
 ---
 
@@ -62,7 +62,12 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 
 > **Windows SmartScreen notice:** The installer is not yet code-signed. Windows Defender SmartScreen may show a warning on first run. Click **More info** → **Run anyway**. This is expected for unsigned builds.
 
-Linux builds are planned.
+**Linux:** download the latest `.AppImage` from [Releases](https://github.com/liliMozi/openhanako/releases), then grant executable permission:
+
+```bash
+chmod +x Hanako-*-Linux-*.AppImage
+./Hanako-*-Linux-*.AppImage
+```
 
 ### First Run
 
@@ -100,7 +105,7 @@ The engine layer coordinates multiple managers (Agent, Session, Model, Preferenc
 | macOS (Apple Silicon) | Supported |
 | macOS (Intel) | Untested, should work |
 | Windows | Beta |
-| Linux | Planned |
+| Linux (x64 AppImage) | Supported |
 | Mobile | Planned |
 
 ## License

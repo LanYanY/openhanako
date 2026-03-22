@@ -20,6 +20,9 @@ jobs:
           - os: windows-latest
             target: nsis
             arch: x64
+          - os: ubuntu-latest
+            target: AppImage
+            arch: x64
 
     runs-on: ${{ matrix.os }}
 
@@ -58,6 +61,11 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
+      # Linux 打包
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux AppImage --publish never
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -65,6 +73,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.AppImage
           if-no-files-found: error
 
   # 双平台构建完成后，自动创建 GitHub Release 并上传安装包
@@ -103,3 +112,4 @@ jobs:
           files: |
             artifacts/**/*.dmg
             artifacts/**/*.exe
+            artifacts/**/*.AppImage
