@@ -43,15 +43,59 @@ function resetState() {
   };
 }
 
-// ── 版本比较 ──
-function isNewerVersion(latest, current) {
-  const a = latest.split(".").map(Number);
-  const b = current.split(".").map(Number);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if ((a[i] || 0) > (b[i] || 0)) return true;
-    if ((a[i] || 0) < (b[i] || 0)) return false;
+// ── 版本比较（支持 prerelease） ──
+function parseVersion(version) {
+  if (!version || typeof version !== "string") {
+    return { major: 0, minor: 0, patch: 0, pre: [] };
   }
-  return false;
+  const cleaned = version.trim().replace(/^v/i, "").split("+")[0];
+  const [core, pre = ""] = cleaned.split("-");
+  const [major = 0, minor = 0, patch = 0] = core.split(".").map((n) => {
+    const x = Number(n);
+    return Number.isFinite(x) ? x : 0;
+  });
+  const preParts = pre
+    ? pre.split(".").map((p) => (/^\d+$/.test(p) ? Number(p) : p))
+    : [];
+  return { major, minor, patch, pre: preParts };
+}
+
+function comparePre(aPre, bPre) {
+  const aHas = aPre.length > 0;
+  const bHas = bPre.length > 0;
+  if (!aHas && !bHas) return 0;
+  if (!aHas) return 1;   // release > prerelease
+  if (!bHas) return -1;
+
+  const len = Math.max(aPre.length, bPre.length);
+  for (let i = 0; i < len; i++) {
+    const a = aPre[i];
+    const b = bPre[i];
+    if (a === undefined) return -1;
+    if (b === undefined) return 1;
+    if (a === b) continue;
+
+    const aNum = typeof a === "number";
+    const bNum = typeof b === "number";
+    if (aNum && bNum) return a > b ? 1 : -1;
+    if (aNum && !bNum) return -1; // numeric < non-numeric
+    if (!aNum && bNum) return 1;
+    return String(a).localeCompare(String(b));
+  }
+  return 0;
+}
+
+function compareVersions(a, b) {
+  const av = parseVersion(a);
+  const bv = parseVersion(b);
+  if (av.major !== bv.major) return av.major > bv.major ? 1 : -1;
+  if (av.minor !== bv.minor) return av.minor > bv.minor ? 1 : -1;
+  if (av.patch !== bv.patch) return av.patch > bv.patch ? 1 : -1;
+  return comparePre(av.pre, bv.pre);
+}
+
+function isNewerVersion(latest, current) {
+  return compareVersions(latest, current) > 0;
 }
 
 // ══════════════════════════════════════
@@ -166,4 +210,11 @@ function setMainWindow(win) {
   _mainWindow = win;
 }
 
-module.exports = { initAutoUpdater, checkForUpdatesAuto, setMainWindow, setUpdateChannel, getState };
+module.exports = {
+  initAutoUpdater,
+  checkForUpdatesAuto,
+  setMainWindow,
+  setUpdateChannel,
+  getState,
+  __testUtils: { parseVersion, compareVersions, isNewerVersion },
+};
