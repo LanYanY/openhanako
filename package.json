@@ -33,6 +33,7 @@
     "dist": "npm run build:renderer && electron-builder --mac dmg",
     "dist:win": "npm run build:renderer && electron-builder --win nsis",
     "dist:linux": "npm run build:renderer && electron-builder --linux AppImage",
+    "test:package:linux": "bash scripts/test-linux-appimage.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "electron-rebuild -f -w better-sqlite3"

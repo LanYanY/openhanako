@@ -66,6 +66,10 @@ jobs:
         if: runner.os == 'Linux'
         run: npx electron-builder --linux AppImage --publish never
 
+      - name: Smoke test Linux AppImage
+        if: runner.os == 'Linux'
+        run: npm run test:package:linux
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
