@@ -73,3 +73,7 @@ export function t(path, vars) {
 export function getLocale() {
   return currentLocale;
 }
+
+// 默认加载中文，确保在未显式调用 loadLocale() 的运行场景
+// （如部分单测直接 import 业务模块）下也能返回可读文案而不是 key。
+loadLocale("zh");

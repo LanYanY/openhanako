@@ -13,7 +13,7 @@
 <p align="center">一个有记忆、有灵魂的私人 AI 助理</p>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
+[![Platform](https://img.shields.io/badge/platform-Linux%20CLI%20%7C%20Web-lightgrey.svg)](https://github.com/liliMozi/openhanako)
 
 ---
 
@@ -59,22 +59,42 @@ OpenHanako 是一个更加易用的 AI agent，有记忆，有性格，会主动
 
 ## 快速开始
 
-### 下载安装
+### Quickstart（5 分钟）
 
-**macOS (Apple Silicon)**：从 [Releases](https://github.com/liliMozi/openhanako/releases) 下载最新 `.dmg`。
+```bash
+git clone https://github.com/liliMozi/openhanako.git
+cd openhanako
+npm ci
+npm run deploy:cli
+```
 
-> **macOS 安全提示：** 应用尚未使用 Apple Developer ID 签名。首次打开时 macOS 可能会拦截，右键点击应用 → 选择**打开** → 在弹窗中点击**打开**即可，只需操作一次。
+启动后按引导完成 provider / base URL / 模型配置，即可开始使用。
 
-**Windows**：从 [Releases](https://github.com/liliMozi/openhanako/releases) 下载最新 `.exe` 安装包。
+### 运行目标
 
-> **Windows SmartScreen 提示：** 安装包暂未经过代码签名，首次运行时 Windows Defender SmartScreen 可能会拦截，点击**更多信息** → **仍要运行**即可，未签名版本的正常现象。
-
-Linux 版本计划中。
+仓库已剪枝为仅保留 **Linux CLI + Web** 两种运行目标（已移除桌面安装包路线）。
 
 ### 首次运行
 
 首次启动时，引导向导会带你完成配置：选择语言、输入你的名字、连接模型提供商（API key + base URL），并选择三个模型：**对话模型**（主对话）、**小工具模型**（摘要等轻量任务）、**大工具模型**（记忆编译和深度分析）。Hanako 使用 OpenAI 兼容协议，支持任意兼容的提供商（OpenAI、DeepSeek、通义千问、Ollama 本地模型等）。
 目前也添加了 OpenAI 和 Minimax 的 Oauth 登录，鉴于 Anthropic 会有封号风险，所以暂时不提供。
+
+### Linux CLI / Web 运行模式
+
+```bash
+npm run deploy:cli   # 一键部署并启动命令行版（可加 -- --mode server/web）
+npm run cli          # 完整命令行交互（无 GUI）
+npm run web          # 启动 Web 模式（前提是已构建过 renderer）
+npm run web:start    # 一条命令完成构建并启动 Web（首次或前端代码变更后）
+```
+
+CLI、Web 模式都连接同一套 server + engine 路由，能力保持一致。
+
+> 说明：Vite 输出 `Some chunks are larger than 500 kB after minification` 属于体积告警，不是构建失败。
+>
+> 如果你在旧版本仓库中遇到 `Missing script: "deploy:cli"`，可改用：
+> `bash scripts/deploy-cli.sh --mode web --skip-install --no-start`
+> 然后执行 `node scripts/launch.js web`。
 
 ## 架构
 
@@ -83,18 +103,17 @@ core/           引擎编排层 + Manager
 lib/            核心库（记忆、工具、沙盒、Bridge 适配器）
 server/         Fastify HTTP + WebSocket 服务
 hub/            调度器、频道路由、事件总线
-desktop/        Electron 应用 + React 前端
+desktop/        React 前端资源（Web 模式下提供）
 tests/          Vitest 测试
 skills2set/     内置技能定义
 ```
 
-引擎层协调多个 Manager（Agent、Session、Model、Preferences、Skill、Channel、BridgeSession 等），通过统一的 facade 暴露。Hub 负责后台任务（心跳巡检、定时任务、频道路由、Agent 间通信、DM 路由），独立于当前聊天会话运行。Electron 主进程与服务端通过子进程 stdio 桥接通信。
+引擎层协调多个 Manager（Agent、Session、Model、Preferences、Skill、Channel、BridgeSession 等），通过统一的 facade 暴露。Hub 负责后台任务（心跳巡检、定时任务、频道路由、Agent 间通信、DM 路由），独立于当前聊天会话运行。Web 模式由 `scripts/launch-web.js` 启动 server + renderer 代理并转发 API/WS。
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 桌面端 | Electron 38 |
 | 前端 | React 19 + Vite 7 |
 | 服务端 | Fastify 5 |
 | Agent 运行时 | [Pi SDK](https://github.com/nicepkg/pi) |
@@ -105,11 +124,7 @@ skills2set/     内置技能定义
 
 | 平台 | 状态 |
 |------|------|
-| macOS (Apple Silicon) | 已支持 |
-| macOS (Intel) | 未测试，理论可用 |
-| Windows | Beta |
-| Linux | 计划中 |
-| 移动端 | 计划中 |
+| Linux（CLI + Web） | 已支持 |
 
 ## 许可证
 

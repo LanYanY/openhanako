@@ -16,6 +16,8 @@ import {
   appendSessionStreamEvent,
   resumeSessionStream,
 } from "../session-stream-store.js";
+import { callProviderText } from "../../lib/llm/provider-client.js";
+import { loadGlobalProviders } from "../../lib/memory/config-loader.js";
 
 /** tool_start 事件只广播这些 arg 字段，避免传输完整文件内容（同步维护：chat-render-shim.ts extractToolDetail） */
 const TOOL_ARG_SUMMARY_KEYS = ["file_path", "path", "command", "pattern", "url", "query", "key", "value", "action", "type", "schedule", "prompt", "label"];
@@ -36,7 +38,36 @@ export default async function chatRoute(app, { engine, hub }) {
   let activeWsClients = 0;
   let disconnectAbortTimer = null;
   const DISCONNECT_ABORT_GRACE_MS = 15_000;
+  const PROMPT_TIMEOUT_MS = Number(process.env.HANA_PROMPT_TIMEOUT_MS || 180_000);
+  const FIRST_TOKEN_TIMEOUT_MS = Number(process.env.HANA_FIRST_TOKEN_TIMEOUT_MS || 25_000);
   const sessionState = new Map(); // sessionPath -> shared stream state
+  const lastUserPrompt = new Map(); // sessionPath -> last user text
+
+  function resolveCurrentModelCreds() {
+    const model = engine.currentModel;
+    const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
+    const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
+    return {
+      modelId: model?.id || "",
+      api: resolved?.api || cfgCreds.api || "",
+      api_key: resolved?.api_key || cfgCreds.api_key || "",
+      base_url: resolved?.base_url || cfgCreds.base_url || "",
+    };
+  }
+
+  async function tryDirectProviderFallback(promptText) {
+    if (!promptText?.trim()) return null;
+    const creds = resolveCurrentModelCreds();
+    if (!(creds.modelId && creds.api && creds.api_key && creds.base_url)) return null;
+    const text = await callProviderText({
+      api: creds.api,
+      api_key: creds.api_key,
+      base_url: creds.base_url,
+      model: creds.modelId,
+      messages: [{ role: "user", content: promptText }],
+    });
+    return text || null;
+  }
 
   function cancelDisconnectAbort() {
     if (disconnectAbortTimer) {
@@ -148,7 +179,7 @@ export default async function chatRoute(app, { engine, hub }) {
   }
 
   // 单订阅：事件只写入一次，再按需广播到所有连接中的客户端。
-  hub.subscribe((event, sessionPath) => {
+  hub.subscribe(async (event, sessionPath) => {
     const isActive = sessionPath === engine.currentSessionPath;
     const ss = sessionPath ? getState(sessionPath) : null;
 
@@ -226,7 +257,36 @@ export default async function chatRoute(app, { engine, hub }) {
       } else if (sub === "toolcall_start") {
         // 不在这里关闭 thinking 状态
       } else if (sub === "error") {
-        if (isActive) broadcast({ type: "error", message: event.assistantMessageEvent.error || "Unknown error" });
+        if (!isActive) return;
+        const errorMsg = event.assistantMessageEvent.error || "Unknown error";
+        const canFallback = !!sessionPath
+          && (errorMsg.includes(t("error.modelNoResponse")) || errorMsg.includes("模型未返回任何内容"));
+        if (!canFallback) {
+          broadcast({ type: "error", message: errorMsg });
+          return;
+        }
+        const promptText = lastUserPrompt.get(sessionPath) || "";
+        if (!promptText.trim()) {
+          broadcast({ type: "error", message: errorMsg });
+          return;
+        }
+        (async () => {
+          try {
+            const text = await tryDirectProviderFallback(promptText);
+            if (!text) {
+              if (ss?.hasToolCall) {
+                emitStreamEvent(sessionPath, ss, { type: "turn_end" });
+                return;
+              }
+              broadcast({ type: "error", message: errorMsg });
+              return;
+            }
+            emitStreamEvent(sessionPath, ss, { type: "text_delta", delta: text });
+            emitStreamEvent(sessionPath, ss, { type: "turn_end" });
+          } catch (fbErr) {
+            broadcast({ type: "error", message: fbErr?.message || errorMsg });
+          }
+        })();
       }
     } else if (event.type === "tool_execution_start") {
       if (!ss) return;
@@ -442,7 +502,18 @@ export default async function chatRoute(app, { engine, hub }) {
 
       // 空回复检测：本轮没有文本输出也没有工具调用，提示用户检查配置
       if (!ss.hasOutput && !ss.hasToolCall && isActive) {
-        broadcast({ type: "error", message: t("error.modelNoResponse") });
+        const promptText = lastUserPrompt.get(sessionPath) || "";
+        try {
+          const fallbackText = await tryDirectProviderFallback(promptText);
+          if (fallbackText) {
+            emitStreamEvent(sessionPath, ss, { type: "text_delta", delta: fallbackText });
+            ss.hasOutput = true;
+          } else {
+            broadcast({ type: "error", message: t("error.modelNoResponse") });
+          }
+        } catch {
+          broadcast({ type: "error", message: t("error.modelNoResponse") });
+        }
       }
 
       emitStreamEvent(sessionPath, ss, { type: "turn_end" });
@@ -622,11 +693,16 @@ export default async function chatRoute(app, { engine, hub }) {
         debugLog()?.log("ws", `user message (${promptText.length} chars, ${msg.images?.length || 0} images)`);
         // Phase 2: 客户端可指定 sessionPath，否则用焦点 session
         const promptSessionPath = msg.sessionPath || engine.currentSessionPath;
+        if (!promptSessionPath) {
+          wsSend(ws, { type: "error", message: t("error.sessionNotFound") });
+          return;
+        }
         if (engine.isSessionStreaming(promptSessionPath)) {
           wsSend(ws, { type: "error", message: t("error.stillStreaming", { name: engine.agentName }) });
           return;
         }
         const ss = getState(promptSessionPath);
+        lastUserPrompt.set(promptSessionPath, promptText);
         try {
           ss.thinkTagParser.reset();
           ss.moodParser.reset();
@@ -635,11 +711,59 @@ export default async function chatRoute(app, { engine, hub }) {
           ss.titlePreview = "";
           beginSessionStream(ss);
           broadcast({ type: "status", isStreaming: true, sessionPath: promptSessionPath });
-          await hub.send(promptText, msg.images ? { images: msg.images, sessionPath: promptSessionPath } : { sessionPath: promptSessionPath });
+          await Promise.race([
+            new Promise((resolve, reject) => {
+              ss.hasOutput = false;
+              ss.hasToolCall = false;
+              const firstTokenTimer = setTimeout(() => {
+                if (!ss.hasOutput && !ss.hasToolCall) {
+                  reject(new Error(`first token timeout after ${Math.floor(FIRST_TOKEN_TIMEOUT_MS / 1000)}s`));
+                }
+              }, FIRST_TOKEN_TIMEOUT_MS);
+              hub.send(
+                promptText,
+                msg.images ? { images: msg.images, sessionPath: promptSessionPath } : { sessionPath: promptSessionPath },
+              )
+                .then(resolve)
+                .catch(reject)
+                .finally(() => clearTimeout(firstTokenTimer));
+            }),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error(`prompt timeout after ${Math.floor(PROMPT_TIMEOUT_MS / 1000)}s`)), PROMPT_TIMEOUT_MS);
+            }),
+          ]);
           broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
         } catch (err) {
-          if (!err.message?.includes("aborted")) {
-            wsSend(ws, { type: "error", message: err.message });
+          const msg = err?.message || String(err);
+          const isTimeout = msg.includes("prompt timeout") || msg.includes("first token timeout");
+          if (isTimeout) {
+            await engine.abortSessionByPath(promptSessionPath).catch(() => {});
+          }
+          const isEmptyLlm = msg.includes(t("error.llmEmptyResponse")) || msg.includes("模型未返回任何内容");
+          const canDirectFallback = isEmptyLlm || msg.includes("first token timeout");
+          // provider 直连兜底：某些第三方网关在 SDK 路径偶发空响应，这里尝试直接调用兼容接口
+          if (canDirectFallback) {
+            try {
+              const fallbackText = await tryDirectProviderFallback(promptText);
+              if (fallbackText) {
+                emitStreamEvent(promptSessionPath, ss, { type: "text_delta", delta: fallbackText });
+                emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
+                broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+                return;
+              }
+              if (ss?.hasToolCall && isEmptyLlm) {
+                emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
+                broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+                return;
+              }
+            } catch (fbErr) {
+              wsSend(ws, { type: "error", message: fbErr?.message || String(fbErr) });
+              broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+              return;
+            }
+          }
+          if (!msg.includes("aborted")) {
+            wsSend(ws, { type: "error", message: msg });
           }
           broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
         }

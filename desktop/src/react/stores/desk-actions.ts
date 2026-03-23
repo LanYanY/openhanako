@@ -113,6 +113,44 @@ export async function deskUploadFiles(paths: string[]): Promise<void> {
   }
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const idx = result.indexOf(",");
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function deskUploadWebFiles(files: File[]): Promise<void> {
+  const s = useStore.getState();
+  if (!files.length) return;
+  try {
+    const payload = await Promise.all(files.map(async (f) => ({
+      name: f.name,
+      contentBase64: await fileToBase64(f),
+    })));
+    const res = await hanaFetch('/api/desk/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'upload_web',
+        dir: s.deskBasePath || undefined,
+        subdir: s.deskCurrentPath || '',
+        files: payload,
+      }),
+    });
+    const data = await res.json();
+    if (data.files) useStore.getState().setDeskFiles(data.files);
+  } catch (err) {
+    console.error('[jian-desk] web upload failed:', err);
+  }
+}
+
 export async function deskCreateFile(text: string): Promise<void> {
   const s = useStore.getState();
   const ts = new Date().toISOString().slice(5, 16).replace(/[T:]/g, '-');

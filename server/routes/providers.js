@@ -3,10 +3,53 @@
  */
 import { getAllProviders } from "../../lib/memory/config-loader.js";
 import { buildProviderAuthHeaders } from "../../lib/llm/provider-client.js";
+import { spawnSync } from "node:child_process";
 
 function maskKey(key) {
   if (!key || key.length < 8) return key ? "***" : "";
   return key.slice(0, 4) + "..." + key.slice(-4);
+}
+
+async function requestWithCurlFallback(url, { method = "GET", headers = {}, body, timeoutMs = 15000 } = {}) {
+  try {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    let text = "";
+    if (typeof res.text === "function") {
+      text = await res.text();
+    } else if (typeof res.json === "function") {
+      const json = await res.json();
+      text = JSON.stringify(json);
+    }
+    return { ok: res.ok, status: res.status, text };
+  } catch (err) {
+    const code = err?.cause?.code || "";
+    // 仅在 DNS/连接类问题时回退 curl，其他错误保持原行为
+    const shouldFallback = ["ENOTFOUND", "EAI_AGAIN", "ECONNRESET", "ECONNREFUSED"].includes(code) || /fetch failed/i.test(err?.message || "");
+    if (!shouldFallback) throw err;
+
+    const args = ["-sS", "--max-time", String(Math.ceil(timeoutMs / 1000)), "-X", method, url];
+    for (const [k, v] of Object.entries(headers || {})) {
+      args.push("-H", `${k}: ${v}`);
+    }
+    if (body) args.push("--data", JSON.stringify(body));
+    args.push("-w", "\n__CURL_STATUS__:%{http_code}");
+
+    const out = spawnSync("curl", args, { encoding: "utf8" });
+    const text = (out.stdout || "").trim();
+    const m = text.match(/\n__CURL_STATUS__:(\d{3})$/);
+    const status = m ? Number(m[1]) : 0;
+    const bodyText = m ? text.slice(0, m.index).trim() : text;
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      text: bodyText || out.stderr || err.message,
+    };
+  }
 }
 
 export default async function providersRoute(app, { engine }) {
@@ -215,7 +258,7 @@ export default async function providersRoute(app, { engine }) {
       }
     }
 
-    if (!base_url) {
+    if (!effectiveBaseUrl) {
       reply.code(400);
       return { error: "base_url is required for remote model fetch" };
     }
@@ -254,7 +297,7 @@ export default async function providersRoute(app, { engine }) {
     }
 
     try {
-      const url = base_url.replace(/\/+$/, "") + "/models";
+      const url = effectiveBaseUrl.replace(/\/+$/, "") + "/models";
       let headers = { "Content-Type": "application/json" };
       if (key) {
         if (!api) {
@@ -262,16 +305,14 @@ export default async function providersRoute(app, { engine }) {
         }
         headers = buildProviderAuthHeaders(api, key);
       }
-      const res = await fetch(url, {
+      const res = await requestWithCurlFallback(url, {
         headers,
-        signal: AbortSignal.timeout(15000),
+        timeoutMs: 15000,
       });
-
       if (!res.ok) {
-        return { error: `HTTP ${res.status}: ${res.statusText}`, models: [] };
+        return { error: `HTTP ${res.status}: ${res.text || "request failed"}`, models: [] };
       }
-
-      const data = await res.json();
+      const data = JSON.parse(res.text || "{}");
       // OpenAI 兼容格式：{ data: [{ id, ... }] }
       // 尝试从返回里抓取上下文长度和最大输出（各 provider 扩展字段不同）
       const models = (data.data || []).map(m => ({
@@ -305,14 +346,14 @@ export default async function providersRoute(app, { engine }) {
       if (api === "anthropic-messages") {
         const baseUrl = base_url.replace(/\/+$/, "");
         const headers = buildProviderAuthHeaders(api, api_key);
-        const res = await fetch(baseUrl + "/messages", {
+        const res = await requestWithCurlFallback(baseUrl + "/messages", {
           method: "POST",
           headers,
-          body: JSON.stringify({ model: "test", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
-          signal: AbortSignal.timeout(10000),
+          body: { model: "test", max_tokens: 1, messages: [{ role: "user", content: "hi" }] },
+          timeoutMs: 10000,
         });
         // 401/403 = key 无效，其他错误（400 model not found 等）说明认证通过了
-        const authOk = res.status !== 401 && res.status !== 403;
+        const authOk = res.status !== 401 && res.status !== 403 && res.status !== 0;
         return { ok: authOk, status: res.status };
       }
 
@@ -325,9 +366,9 @@ export default async function providersRoute(app, { engine }) {
         }
         headers = buildProviderAuthHeaders(api, api_key);
       }
-      const res = await fetch(url, {
+      const res = await requestWithCurlFallback(url, {
         headers,
-        signal: AbortSignal.timeout(10000),
+        timeoutMs: 10000,
       });
       return { ok: res.ok, status: res.status };
     } catch (err) {

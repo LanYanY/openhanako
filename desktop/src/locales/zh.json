@@ -977,6 +977,7 @@
     "newFolder": "新建文件夹",
     "ctx": {
       "open": "打开",
+      "download": "下载",
       "openInFinder": "打开文件夹",
       "rename": "重命名",
       "copyPath": "复制路径",

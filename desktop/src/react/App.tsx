@@ -65,6 +65,44 @@ window.__hanaLog = function (level: string, module: string, message: string) {
   }).catch(err => console.warn('[hanaLog] log upload failed:', err));
 };
 
+// ── 控制台错误/警告上报（便于复现后回传日志） ──
+(() => {
+  if ((window as any).__hanaConsolePatched) return;
+  (window as any).__hanaConsolePatched = true;
+
+  const rawError = console.error.bind(console);
+  const rawWarn = console.warn.bind(console);
+  const lastSeen = new Map<string, number>();
+  const DEDUP_MS = 1200;
+
+  const toText = (args: unknown[]) => args
+    .map((a) => {
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    })
+    .join(' ')
+    .slice(0, 2000);
+
+  const report = (level: 'error' | 'warn', args: unknown[]) => {
+    const text = toText(args);
+    if (!text) return;
+    const now = Date.now();
+    const prev = lastSeen.get(`${level}:${text}`) || 0;
+    if (now - prev < DEDUP_MS) return;
+    lastSeen.set(`${level}:${text}`, now);
+    window.__hanaLog?.(level, 'console', text);
+  };
+
+  console.error = (...args: unknown[]) => {
+    report('error', args);
+    rawError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    report('warn', args);
+    rawWarn(...args);
+  };
+})();
+
 // ── 全局错误捕获 ──
 window.addEventListener('error', (e) => {
   window.__hanaLog?.('error', 'desktop', `${e.message} at ${e.filename}:${e.lineno}`);
@@ -215,6 +253,9 @@ async function init(): Promise<void> {
   window.hana?.onShowSkillViewer?.((data: any) => {
     useStore.setState({ skillViewerData: data });
   });
+  window.addEventListener('hana:show-skill-viewer', (e: any) => {
+    if (e?.detail) useStore.setState({ skillViewerData: e.detail });
+  });
 
   // 21. 通知 app ready
   platform.appReady();
@@ -230,15 +271,17 @@ async function handleDrop(e: React.DragEvent): Promise<void> {
   if (store.attachedFiles.length >= 9) return;
 
   let srcPaths: string[] = [];
+  const webFiles: File[] = [];
   const nameMap: Record<string, string> = {};
   for (const file of Array.from(files)) {
     const filePath = window.platform?.getFilePath?.(file);
     if (filePath) {
       srcPaths.push(filePath);
       nameMap[filePath] = file.name;
+    } else {
+      webFiles.push(file);
     }
   }
-  if (srcPaths.length === 0) return;
 
   // Desk 文件直接附加（保留原始路径，不走 upload）
   const s = useStore.getState();
@@ -258,6 +301,38 @@ async function handleDrop(e: React.DragEvent): Promise<void> {
         name,
         isDirectory: knownFile?.isDir ?? false,
       });
+    }
+  }
+  // Web 文件（无本地绝对路径）通过 /api/upload-web 直接上传二进制
+  if (webFiles.length > 0) {
+    try {
+      const payload = await Promise.all(webFiles.slice(0, 9).map(async (f) => {
+        const arr = new Uint8Array(await f.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+        return {
+          name: f.name,
+          mimeType: f.type || 'application/octet-stream',
+          contentBase64: btoa(bin),
+        };
+      }));
+      const res = await hanaFetch('/api/upload-web', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: payload }),
+      });
+      const data = await res.json();
+      for (const item of data.uploads || []) {
+        if (item.dest) {
+          useStore.getState().addAttachedFile({
+            path: item.dest,
+            name: item.name,
+            isDirectory: false,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[upload-web]', err);
     }
   }
   if (srcPaths.length === 0) return;

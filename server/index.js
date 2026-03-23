@@ -258,13 +258,16 @@ try {
       }
     });
   } else {
-    // 独立运行模式：启动 CLI
-    startCLI({
-      port: actualPort,
-      token: SERVER_TOKEN,
-      agentName: engine.agentName,
-      userName: engine.userName,
-    });
+    // 独立运行模式：按接口模式启动
+    const interfaceMode = (process.env.HANA_INTERFACE || "cli").toLowerCase();
+    if (interfaceMode !== "none") {
+      startCLI({
+        port: actualPort,
+        token: SERVER_TOKEN,
+        agentName: engine.agentName,
+        userName: engine.userName,
+      });
+    }
   }
 
 } catch (err) {

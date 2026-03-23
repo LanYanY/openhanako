@@ -4,7 +4,7 @@
 
 import { useCallback } from 'react';
 import { useStore } from '../../stores';
-import { loadDeskFiles } from '../../stores/desk-actions';
+import { applyFolder, loadDeskFiles } from '../../stores/desk-actions';
 import {
   ICONS,
   getSortOptions,
@@ -19,17 +19,28 @@ import s from './Desk.module.css';
 export function DeskOpenButton() {
   const handleClick = useCallback(() => {
     const s = useStore.getState();
-    if (!s.deskBasePath) return;
-    const target = s.deskCurrentPath
-      ? s.deskBasePath + '/' + s.deskCurrentPath
-      : s.deskBasePath;
-    window.platform?.openFolder?.(target);
+    const platform = window.platform;
+    platform?.getPlatform?.().then(async (p) => {
+      if (p === 'web') {
+        const selected = await platform?.selectFolder?.();
+        if (selected) applyFolder(selected);
+        return;
+      }
+      if (!s.deskBasePath) return;
+      const target = s.deskCurrentPath
+        ? s.deskBasePath + '/' + s.deskCurrentPath
+        : s.deskBasePath;
+      platform?.openFolder?.(target);
+    }).catch(() => {});
   }, []);
+
+  const isWeb = document.documentElement.getAttribute('data-platform') === 'web';
+  const t = window.t ?? ((p: string) => p);
 
   return (
     <button className={s.openBtn} onClick={handleClick}>
       <span dangerouslySetInnerHTML={{ __html: ICONS.finderOpen }} />
-      <span>{(window.t ?? ((p: string) => p))('desk.openInFinder')}</span>
+      <span>{isWeb ? t('input.selectFolder') : t('desk.openInFinder')}</span>
     </button>
   );
 }

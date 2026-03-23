@@ -418,6 +418,30 @@ export default async function deskRoute(app, { engine, hub }) {
     return { path: dir };
   });
 
+  /** 浏览远程工作目录（供 Web 端选择工作文件夹） */
+  app.get("/api/desk/folders", async (req) => {
+    const rawDir = req.query.dir ? decodeURIComponent(req.query.dir) : "";
+    const base = rawDir || engine.deskCwd || engine.getHomeFolder?.() || process.cwd();
+    if (!base) return { current: null, parent: null, folders: [] };
+    if (rawDir && !isApprovedDir(base, engine)) return { error: t("error.dirNotAllowed") };
+    if (!fs.existsSync(base) || !fs.statSync(base).isDirectory()) return { error: "dir not found" };
+
+    const parent = path.dirname(base);
+    const entries = fs.readdirSync(base, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => {
+        const fullPath = path.join(base, e.name);
+        return { name: e.name, path: fullPath };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      current: base,
+      parent: parent && parent !== base ? parent : null,
+      folders: entries,
+    };
+  });
+
   /** 列出工作空间文件（支持 ?subdir=xxx 浏览子目录, ?dir=xxx 覆盖基目录） */
   app.get("/api/desk/files", async (req) => {
     const dir = req.query.dir ? decodeURIComponent(req.query.dir) : engine.deskCwd;
@@ -526,6 +550,34 @@ export default async function deskRoute(app, { engine, hub }) {
             results.push({ src: srcPath, name: fname });
           } catch (err) {
             results.push({ src: srcPath, error: err.message });
+          }
+        }
+        return { ok: true, results, files: listWorkspaceFiles(dir) };
+      }
+
+      case "upload_web": {
+        const files = Array.isArray(req.body?.files) ? req.body.files : [];
+        if (files.length === 0) return { error: "files required" };
+        const results = [];
+        for (const f of files) {
+          try {
+            const rawName = String(f?.name || "upload.bin");
+            const safeName = path.basename(rawName);
+            const contentBase64 = String(f?.contentBase64 || "");
+            if (!contentBase64) {
+              results.push({ name: safeName, error: "missing contentBase64" });
+              continue;
+            }
+            const dest = path.join(dir, safeName);
+            if (!isInsidePath(dest, dir)) {
+              results.push({ name: safeName, error: "invalid path" });
+              continue;
+            }
+            const buf = Buffer.from(contentBase64, "base64");
+            fs.writeFileSync(dest, buf);
+            results.push({ name: safeName, ok: true });
+          } catch (err) {
+            results.push({ name: f?.name || "upload.bin", error: err.message });
           }
         }
         return { ok: true, results, files: listWorkspaceFiles(dir) };
