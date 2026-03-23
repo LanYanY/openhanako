@@ -59,4 +59,45 @@ export default async function fsRoute(app, { engine }) {
       reply.code(404).send({ error: "file not found" });
     }
   });
+
+  // GET /api/fs/download?path=... → 二进制下载
+  app.get("/api/fs/download", async (req, reply) => {
+    const filePath = req.query.path;
+    if (!filePath) return reply.code(400).send({ error: "missing path" });
+    if (!isSafePath(filePath, getAllowedRoots())) {
+      return reply.code(403).send({ error: "path not allowed" });
+    }
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return reply.code(400).send({ error: "file required" });
+      reply.header("Content-Disposition", `attachment; filename="${path.basename(filePath)}"`);
+      return reply.send(fs.createReadStream(filePath));
+    } catch {
+      reply.code(404).send({ error: "file not found" });
+    }
+  });
+
+  // POST /api/fs/write { path, content } → 写入文本文件
+  app.post("/api/fs/write", async (req, reply) => {
+    const filePath = req.body?.path;
+    const content = req.body?.content;
+    if (!filePath || typeof filePath !== "string") {
+      return reply.code(400).send({ error: "missing path" });
+    }
+    if (typeof content !== "string") {
+      return reply.code(400).send({ error: "missing content" });
+    }
+    if (!path.isAbsolute(filePath)) {
+      return reply.code(400).send({ error: "path must be absolute" });
+    }
+    if (!isSafePath(filePath, getAllowedRoots())) {
+      return reply.code(403).send({ error: "path not allowed" });
+    }
+    try {
+      fs.writeFileSync(filePath, content, "utf-8");
+      return { ok: true };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message || "write failed" });
+    }
+  });
 }

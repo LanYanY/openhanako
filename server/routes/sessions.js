@@ -312,6 +312,16 @@ export default async function sessionsRoute(app, { engine }) {
     return bm.getBrowserSessions();
   });
 
+  // 当前 session 浏览器状态（供 Web Browser Viewer 轮询）
+  app.get("/api/browser/status", async () => {
+    const bm = BrowserManager.instance();
+    return {
+      running: bm.isRunning,
+      url: bm.currentUrl || null,
+      title: bm.currentUrl || "",
+    };
+  });
+
   // 关闭指定 session 的浏览器
   app.post("/api/browser/close-session", async (req) => {
     const { sessionPath } = req.body || {};
