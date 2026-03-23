@@ -16,6 +16,8 @@ import {
   appendSessionStreamEvent,
   resumeSessionStream,
 } from "../session-stream-store.js";
+import { callProviderText } from "../../lib/llm/provider-client.js";
+import { loadGlobalProviders } from "../../lib/memory/config-loader.js";
 
 /** tool_start 事件只广播这些 arg 字段，避免传输完整文件内容（同步维护：chat-render-shim.ts extractToolDetail） */
 const TOOL_ARG_SUMMARY_KEYS = ["file_path", "path", "command", "pattern", "url", "query", "key", "value", "action", "type", "schedule", "prompt", "label"];
@@ -37,6 +39,7 @@ export default async function chatRoute(app, { engine, hub }) {
   let disconnectAbortTimer = null;
   const DISCONNECT_ABORT_GRACE_MS = 15_000;
   const sessionState = new Map(); // sessionPath -> shared stream state
+  const lastUserPrompt = new Map(); // sessionPath -> last user text
 
   function cancelDisconnectAbort() {
     if (disconnectAbortTimer) {
@@ -226,7 +229,46 @@ export default async function chatRoute(app, { engine, hub }) {
       } else if (sub === "toolcall_start") {
         // 不在这里关闭 thinking 状态
       } else if (sub === "error") {
-        if (isActive) broadcast({ type: "error", message: event.assistantMessageEvent.error || "Unknown error" });
+        if (!isActive) return;
+        const errorMsg = event.assistantMessageEvent.error || "Unknown error";
+        const canFallback = !!sessionPath
+          && (errorMsg.includes(t("error.modelNoResponse")) || errorMsg.includes("模型未返回任何内容"));
+        if (!canFallback) {
+          broadcast({ type: "error", message: errorMsg });
+          return;
+        }
+        const promptText = lastUserPrompt.get(sessionPath) || "";
+        if (!promptText.trim()) {
+          broadcast({ type: "error", message: errorMsg });
+          return;
+        }
+        (async () => {
+          try {
+            const model = engine.currentModel;
+            const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
+            const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
+            const creds = {
+              api: resolved?.api || cfgCreds.api || "",
+              api_key: resolved?.api_key || cfgCreds.api_key || "",
+              base_url: resolved?.base_url || cfgCreds.base_url || "",
+            };
+            if (!(model?.id && creds.api && creds.api_key && creds.base_url)) {
+              broadcast({ type: "error", message: errorMsg });
+              return;
+            }
+            const text = await callProviderText({
+              api: creds.api,
+              api_key: creds.api_key,
+              base_url: creds.base_url,
+              model: model.id,
+              messages: [{ role: "user", content: promptText }],
+            });
+            emitStreamEvent(sessionPath, ss, { type: "text_delta", delta: text });
+            emitStreamEvent(sessionPath, ss, { type: "turn_end" });
+          } catch (fbErr) {
+            broadcast({ type: "error", message: fbErr?.message || errorMsg });
+          }
+        })();
       }
     } else if (event.type === "tool_execution_start") {
       if (!ss) return;
@@ -631,6 +673,7 @@ export default async function chatRoute(app, { engine, hub }) {
           return;
         }
         const ss = getState(promptSessionPath);
+        lastUserPrompt.set(promptSessionPath, promptText);
         try {
           ss.thinkTagParser.reset();
           ss.moodParser.reset();
@@ -642,8 +685,40 @@ export default async function chatRoute(app, { engine, hub }) {
           await hub.send(promptText, msg.images ? { images: msg.images, sessionPath: promptSessionPath } : { sessionPath: promptSessionPath });
           broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
         } catch (err) {
-          if (!err.message?.includes("aborted")) {
-            wsSend(ws, { type: "error", message: err.message });
+          const msg = err?.message || String(err);
+          const isEmptyLlm = msg.includes(t("error.llmEmptyResponse")) || msg.includes("模型未返回任何内容");
+          // provider 直连兜底：某些第三方网关在 SDK 路径偶发空响应，这里尝试直接调用兼容接口
+          if (isEmptyLlm) {
+            try {
+              const model = engine.currentModel;
+              const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
+              const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
+              const creds = {
+                api: resolved?.api || cfgCreds.api || "",
+                api_key: resolved?.api_key || cfgCreds.api_key || "",
+                base_url: resolved?.base_url || cfgCreds.base_url || "",
+              };
+              if (model?.id && creds.api && creds.api_key && creds.base_url) {
+                const fallbackText = await callProviderText({
+                  api: creds.api,
+                  api_key: creds.api_key,
+                  base_url: creds.base_url,
+                  model: model.id,
+                  messages: [{ role: "user", content: promptText }],
+                });
+                emitStreamEvent(promptSessionPath, ss, { type: "text_delta", delta: fallbackText });
+                emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
+                broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+                return;
+              }
+            } catch (fbErr) {
+              wsSend(ws, { type: "error", message: fbErr?.message || String(fbErr) });
+              broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+              return;
+            }
+          }
+          if (!msg.includes("aborted")) {
+            wsSend(ws, { type: "error", message: msg });
           }
           broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
         }
