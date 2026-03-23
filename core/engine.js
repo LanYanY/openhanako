@@ -619,7 +619,14 @@ export class HanaEngine {
   }
 
   async summarizeTitle(ut, at) {
-    return _summarizeTitle(this.resolveUtilityConfig(), ut, at);
+    let utilConfig = null;
+    try {
+      utilConfig = this.resolveUtilityConfig();
+    } catch (err) {
+      console.warn(`[chat] summarizeTitle skipped utility model: ${err.message}`);
+      return null;
+    }
+    return _summarizeTitle(utilConfig, ut, at);
   }
 
   async translateSkillNames(names, lang) {

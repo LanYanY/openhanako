@@ -13,7 +13,7 @@
 <p align="center"><a href="README_CN.md">中文版</a></p>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
 
 ---
 
@@ -52,6 +52,17 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 
 ## Quick Start
 
+### Quickstart (5 minutes)
+
+```bash
+git clone https://github.com/liliMozi/openhanako.git
+cd openhanako
+npm ci
+npm run deploy:cli
+```
+
+After startup, follow the onboarding wizard to configure provider/base URL/model, then start chatting.
+
 ### Download
 
 **macOS (Apple Silicon):** download the latest `.dmg` from [Releases](https://github.com/liliMozi/openhanako/releases).
@@ -62,11 +73,36 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 
 > **Windows SmartScreen notice:** The installer is not yet code-signed. Windows Defender SmartScreen may show a warning on first run. Click **More info** → **Run anyway**. This is expected for unsigned builds.
 
-Linux builds are planned.
+**Linux:** download the latest `.AppImage` from [Releases](https://github.com/liliMozi/openhanako/releases), then grant executable permission:
+
+```bash
+chmod +x Hanako-*-Linux-*.AppImage
+./Hanako-*-Linux-*.AppImage
+```
 
 ### First Run
 
 On first launch, an onboarding wizard will guide you through setup: choose a language, enter your name, connect a model provider (API key + base URL), and select three models — a **chat model** (main conversation), a **utility model** (lightweight tasks like summarization), and a **utility large model** (memory compilation and deep analysis). Hanako uses the OpenAI-compatible protocol, so any provider that supports it will work (OpenAI, DeepSeek, Qwen, local models via Ollama, etc.).
+
+### Non-GUI / CLI / TUI / Web modes
+
+Hanako now supports running without Electron GUI:
+
+```bash
+npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server/web)
+npm run cli          # Full command-line chat shell (no GUI)
+npm run tui          # Terminal UI mode (full-screen TUI)
+npm run web          # Start web mode (after renderer has been built once)
+npm run web:start    # Build renderer + start web mode (first-time / after frontend changes)
+```
+
+The CLI, TUI, and Web mode all connect to the same server + engine routes used by the desktop app, so capabilities stay aligned with desktop behavior.
+
+> Note: Vite may print “Some chunks are larger than 500 kB after minification.” This is a warning, not a build failure.
+>
+> If you see `Missing script: "deploy:cli"` on an older checkout, run:
+> `bash scripts/deploy-cli.sh --mode web --skip-install --no-start`
+> then `node scripts/launch.js web`.
 
 ## Architecture
 
@@ -100,7 +136,7 @@ The engine layer coordinates multiple managers (Agent, Session, Model, Preferenc
 | macOS (Apple Silicon) | Supported |
 | macOS (Intel) | Untested, should work |
 | Windows | Beta |
-| Linux | Planned |
+| Linux (x64 AppImage) | Supported |
 | Mobile | Planned |
 
 ## License
