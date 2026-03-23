@@ -113,7 +113,8 @@ export class ExecutionRouter {
   resolveUtilityConfig(agentConfig, sharedModels, utilApiOverride) {
     const cfg = agentConfig || {};
     const utilityModelRef = sharedModels?.utility || cfg.models?.utility;
-    const largeModelRef = sharedModels?.utility_large || cfg.models?.utility_large;
+    const allowLargeFallback = process.env.HANA_ALLOW_UTILITY_LARGE_FALLBACK === "1";
+    const largeModelRef = sharedModels?.utility_large || cfg.models?.utility_large || (allowLargeFallback ? utilityModelRef : null);
 
     if (!utilityModelRef) throw new Error(t("error.noUtilityModel"));
     if (!largeModelRef) throw new Error(t("error.noUtilityLargeModel"));

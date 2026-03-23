@@ -8,11 +8,7 @@
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
-import {
-  createAgentSession,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+import * as PiAgent from "@mariozechner/pi-coding-agent";
 import { createModuleLogger } from "../lib/debug-log.js";
 import { BrowserManager } from "../lib/browser/browser-manager.js";
 import { t, getLocale } from "../server/i18n.js";
@@ -33,6 +29,7 @@ function getSteerPrefix() {
   return isZh ? "（插话，无需 MOOD）\n" : "(Interjection, no MOOD needed)\n";
 }
 const MAX_CACHED_SESSIONS = 20;
+const { createAgentSession, SessionManager } = PiAgent;
 
 export class SessionCoordinator {
   /**
@@ -596,12 +593,16 @@ export class SessionCoordinator {
     const overrides = this._d.getAgent?.()?.config?.models?.overrides;
     const ov = model?.id && overrides?.[model.id];
     const contextWindow = ov?.context || model?.contextWindow || 200_000;
-    return SettingsManager.inMemory({
+    const settingsPayload = {
       compaction: {
         enabled: true,
         reserveTokens: Math.max(contextWindow - 100_000, 16384),
         keepRecentTokens: 20_000,
       },
-    });
+    };
+    if ("SettingsManager" in PiAgent && typeof PiAgent.SettingsManager?.inMemory === "function") {
+      return PiAgent.SettingsManager.inMemory(settingsPayload);
+    }
+    return settingsPayload;
   }
 }

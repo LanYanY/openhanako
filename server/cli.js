@@ -31,6 +31,7 @@ export function startCLI({ port, token, agentName, userName }) {
   let currentMood = "";
   let inMood = false;
   let inThinking = false;
+  let onboardingRunning = false;
 
   // ── HTTP 工具 ──
   async function api(path, opts = {}) {
@@ -47,7 +48,8 @@ export function startCLI({ port, token, agentName, userName }) {
   function connect() {
     ws = new WebSocket(wsUrl);
 
-    ws.on("open", () => {
+    ws.on("open", async () => {
+      await maybeRunOnboarding(false);
       showPrompt();
     });
 
@@ -158,7 +160,102 @@ ${c.red}${t("cli.error", { msg: msg.message })}${c.reset}
   });
 
   function showPrompt() {
+    if (onboardingRunning) return;
     process.stdout.write(`${c.cyan}${userName}${c.reset} ${c.dim}›${c.reset} `);
+  }
+
+  function askLine(question) {
+    return new Promise((resolve) => {
+      process.stdout.write(question);
+      rl.once("line", (answer) => resolve((answer || "").trim()));
+    });
+  }
+
+  async function maybeRunOnboarding(force = false) {
+    try {
+      const config = await api("/api/config");
+      const needsProvider = !config?.api?.provider;
+      const needsModel = !config?.models?.chat;
+      if (!force && !needsProvider && !needsModel) return;
+
+      onboardingRunning = true;
+      console.log(`\n${c.bold}CLI Onboarding${c.reset}`);
+      console.log(`${c.dim}检测到当前未完成模型配置，可在终端完成首次设置。${c.reset}`);
+      const go = (await askLine("现在开始配置？(Y/n): ")).toLowerCase();
+      if (go === "n" || go === "no") {
+        onboardingRunning = false;
+        return;
+      }
+
+      const providerName = (await askLine("Provider 名称（默认 openai）: ")) || "openai";
+      const providerApi = (await askLine("Provider API 类型（默认 openai-chat）: ")) || "openai-chat";
+      const providerUrl = (await askLine("Base URL（默认 https://api.openai.com/v1）: ")) || "https://api.openai.com/v1";
+      const apiKey = await askLine("API Key: ");
+
+      if (!apiKey) {
+        console.log(`${c.yellow}未填写 API Key，已跳过 onboarding。${c.reset}`);
+        onboardingRunning = false;
+        return;
+      }
+
+      // 先保存 provider 凭据与默认 provider
+      const saveRes = await api("/api/config", {
+        method: "PUT",
+        body: {
+          api: { provider: providerName },
+          providers: {
+            [providerName]: {
+              base_url: providerUrl,
+              api: providerApi,
+              api_key: apiKey,
+            },
+          },
+        },
+      });
+      if (saveRes?.error) throw new Error(saveRes.error);
+
+      // 尝试拉取模型列表
+      const modelRes = await api("/api/providers/fetch-models", {
+        method: "POST",
+        body: {
+          name: providerName,
+          base_url: providerUrl,
+          api: providerApi,
+          api_key: apiKey,
+        },
+      });
+
+      const models = Array.isArray(modelRes?.models) ? modelRes.models : [];
+      let modelId = "";
+      if (models.length > 0) {
+        console.log(`\n${c.bold}可用模型${c.reset}`);
+        models.slice(0, 20).forEach((m, i) => console.log(`  ${c.dim}${i + 1}.${c.reset} ${m.id}`));
+        const pick = await askLine("选择模型序号（或直接输入模型 ID）: ");
+        const idx = parseInt(pick, 10) - 1;
+        modelId = (idx >= 0 && idx < models.length) ? models[idx].id : pick;
+      } else {
+        if (modelRes?.error) console.log(`${c.yellow}拉取模型失败：${modelRes.error}${c.reset}`);
+        modelId = await askLine("请输入 chat 模型 ID（例如 gpt-4o-mini）: ");
+      }
+
+      if (!modelId) {
+        console.log(`${c.yellow}未选择模型，已保存 provider 但未设置 chat 模型。${c.reset}`);
+        onboardingRunning = false;
+        return;
+      }
+
+      const setModelRes = await api("/api/config", {
+        method: "PUT",
+        body: { models: { chat: modelId } },
+      });
+      if (setModelRes?.error) throw new Error(setModelRes.error);
+
+      console.log(`${c.green}Onboarding 完成：${providerName} / ${modelId}${c.reset}\n`);
+    } catch (err) {
+      console.log(`${c.red}Onboarding 失败：${err.message}${c.reset}`);
+    } finally {
+      onboardingRunning = false;
+    }
   }
 
   // 监听 ESC 键中断生成
@@ -218,6 +315,7 @@ ${c.dim}${t("cli.goodbye")}${c.reset}`);
       showPrompt();
       return;
     }
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     // 如果正在流式输出，忽略
     if (isStreaming) return;
@@ -244,6 +342,7 @@ ${c.bold}${t("cli.helpTitle")}${c.reset}
   ${c.cyan}/model${c.reset}              ${t("cli.helpModel")}
   ${c.cyan}/model set${c.reset}          ${t("cli.helpModelSet")}
   ${c.cyan}/config${c.reset}             ${t("cli.helpConfig")}
+  ${c.cyan}/onboard${c.reset}            run CLI onboarding wizard
   ${c.cyan}/session new${c.reset}        ${t("cli.helpSessionNew")}
   ${c.cyan}/session list${c.reset}       ${t("cli.helpSessionList")}
   ${c.cyan}/agent${c.reset}              ${t("cli.helpAgent")}
@@ -306,6 +405,12 @@ ${c.bold}${t("cli.helpTitle")}${c.reset}
         console.log(`  ${c.dim}Locale:${c.reset} ${data.locale || "en"}`);
         console.log(`  ${c.dim}Model:${c.reset}  ${data.api?.model || t("cli.notSet")}`);
         console.log();
+        showPrompt();
+        break;
+      }
+
+      case "onboard": {
+        await maybeRunOnboarding(true);
         showPrompt();
         break;
       }
