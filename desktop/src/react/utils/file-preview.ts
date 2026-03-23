@@ -27,8 +27,13 @@ export const PREVIEWABLE_EXTS: Record<string, string> = {
 
 export const BINARY_PREVIEW_TYPES = new Set(['image', 'pdf']);
 
+function normalizeExt(ext: string): string {
+  return String(ext || '').trim().toLowerCase().replace(/^\./, '');
+}
+
 export async function readFileForPreview(filePath: string, ext: string): Promise<string | null> {
-  const previewType = PREVIEWABLE_EXTS[ext];
+  const normalizedExt = normalizeExt(ext);
+  const previewType = PREVIEWABLE_EXTS[normalizedExt];
   if (!previewType) return null;
   const p = window.platform;
   if (!p) return null;
@@ -43,8 +48,9 @@ export async function readFileForPreview(filePath: string, ext: string): Promise
  */
 export async function openFilePreview(filePath: string, label: string, ext: string): Promise<void> {
   const fileName = label || filePath.split('/').pop() || filePath;
+  const normalizedExt = normalizeExt(ext);
 
-  if (ext === 'skill') {
+  if (normalizedExt === 'skill') {
     // .skill 文件可能是纯文本也可能是 zip，先尝试读取内容在预览面板展示
     const name = fileName.replace(/\.skill$/, '');
     const content = await window.platform?.readFile?.(filePath);
@@ -65,19 +71,19 @@ export async function openFilePreview(filePath: string, label: string, ext: stri
     return;
   }
 
-  const canPreview = ext in PREVIEWABLE_EXTS;
+  const canPreview = normalizedExt in PREVIEWABLE_EXTS;
   if (canPreview) {
-    const content = await readFileForPreview(filePath, ext);
+    const content = await readFileForPreview(filePath, normalizedExt);
     if (content != null) {
-      const previewType = PREVIEWABLE_EXTS[ext];
+      const previewType = PREVIEWABLE_EXTS[normalizedExt];
       const artifact: Artifact = {
         id: `file-${filePath}`,
         type: previewType,
         title: fileName,
         content,
         filePath,
-        ext,
-        language: previewType === 'code' ? ext : undefined,
+        ext: normalizedExt,
+        language: previewType === 'code' ? normalizedExt : undefined,
       };
       upsertArtifact(artifact);
       openPreview(artifact);
@@ -92,7 +98,7 @@ export async function openFilePreview(filePath: string, label: string, ext: stri
     title: fileName,
     content: '',
     filePath,
-    ext,
+    ext: normalizedExt,
   };
   upsertArtifact(artifact);
   openPreview(artifact);

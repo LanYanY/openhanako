@@ -64,9 +64,19 @@ export function connectWebSocket(port?: string, token?: string): void {
     }
   };
 
-  _ws.onmessage = (event: MessageEvent) => {
+  _ws.onmessage = async (event: MessageEvent) => {
     try {
-      const msg = JSON.parse(event.data);
+      let payload: unknown = event.data;
+      if (payload instanceof Blob) {
+        payload = await payload.text();
+      } else if (payload instanceof ArrayBuffer) {
+        payload = new TextDecoder().decode(payload);
+      }
+      if (typeof payload !== 'string') {
+        payload = String(payload ?? '');
+      }
+      const payloadText = payload as string;
+      const msg = JSON.parse(payloadText);
       handleServerMessage(msg);
     } catch (err) {
       console.error('[ws] message parse error:', err);

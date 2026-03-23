@@ -13,7 +13,7 @@
 <p align="center"><a href="README_CN.md">中文版</a></p>
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/liliMozi/openhanako/releases)
+[![Platform](https://img.shields.io/badge/platform-Linux%20CLI%20%7C%20Web-lightgrey.svg)](https://github.com/liliMozi/openhanako)
 
 ---
 
@@ -52,21 +52,41 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 
 ## Quick Start
 
-### Download
+### Quickstart (5 minutes)
 
-**macOS (Apple Silicon):** download the latest `.dmg` from [Releases](https://github.com/liliMozi/openhanako/releases).
+```bash
+git clone https://github.com/liliMozi/openhanako.git
+cd openhanako
+npm ci
+npm run deploy:cli
+```
 
-> **macOS Gatekeeper notice:** The app is not yet signed with an Apple Developer ID. On first launch, macOS may block it. Right-click the app → select **Open** → click **Open** in the dialog. You only need to do this once.
+After startup, follow the onboarding wizard to configure provider/base URL/model, then start chatting.
 
-**Windows:** download the latest `.exe` installer from [Releases](https://github.com/liliMozi/openhanako/releases).
+### Runtime Targets
 
-> **Windows SmartScreen notice:** The installer is not yet code-signed. Windows Defender SmartScreen may show a warning on first run. Click **More info** → **Run anyway**. This is expected for unsigned builds.
-
-Linux builds are planned.
+This repository is now trimmed to **Linux CLI + Web** runtime targets only (desktop installers removed).
 
 ### First Run
 
 On first launch, an onboarding wizard will guide you through setup: choose a language, enter your name, connect a model provider (API key + base URL), and select three models — a **chat model** (main conversation), a **utility model** (lightweight tasks like summarization), and a **utility large model** (memory compilation and deep analysis). Hanako uses the OpenAI-compatible protocol, so any provider that supports it will work (OpenAI, DeepSeek, Qwen, local models via Ollama, etc.).
+
+### Linux CLI / Web modes
+
+```bash
+npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode server/web)
+npm run cli          # Full command-line chat shell (no GUI)
+npm run web          # Start web mode (after renderer has been built once)
+npm run web:start    # Build renderer + start web mode (first-time / after frontend changes)
+```
+
+CLI and Web mode connect to the same server + engine routes, so capabilities stay aligned.
+
+> Note: Vite may print “Some chunks are larger than 500 kB after minification.” This is a warning, not a build failure.
+>
+> If you see `Missing script: "deploy:cli"` on an older checkout, run:
+> `bash scripts/deploy-cli.sh --mode web --skip-install --no-start`
+> then `node scripts/launch.js web`.
 
 ## Architecture
 
@@ -75,18 +95,17 @@ core/           Engine orchestration + Managers
 lib/            Core libraries (memory, tools, sandbox, bridge adapters)
 server/         Fastify HTTP + WebSocket server
 hub/            Scheduler, ChannelRouter, EventBus
-desktop/        Electron app + React frontend
+desktop/        React frontend assets (served in web mode)
 tests/          Vitest test suite
 skills2set/     Built-in skill definitions
 ```
 
-The engine layer coordinates multiple managers (Agent, Session, Model, Preferences, Skill, Channel, BridgeSession, etc.) and exposes them through a unified facade. The Hub handles background tasks (heartbeat, cron, channel routing, agent messaging, DM routing) independently of the active chat session. Communication between the Electron main process and the server runs over a child process stdio bridge.
+The engine layer coordinates multiple managers (Agent, Session, Model, Preferences, Skill, Channel, BridgeSession, etc.) and exposes them through a unified facade. The Hub handles background tasks (heartbeat, cron, channel routing, agent messaging, DM routing) independently of the active chat session. In web mode, `scripts/launch-web.js` starts server + renderer proxy and bridges API/WS traffic.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Desktop | Electron 38 |
 | Frontend | React 19 + Vite 7 |
 | Server | Fastify 5 |
 | Agent Runtime | [Pi SDK](https://github.com/nicepkg/pi) |
@@ -97,11 +116,7 @@ The engine layer coordinates multiple managers (Agent, Session, Model, Preferenc
 
 | Platform | Status |
 |----------|--------|
-| macOS (Apple Silicon) | Supported |
-| macOS (Intel) | Untested, should work |
-| Windows | Beta |
-| Linux | Planned |
-| Mobile | Planned |
+| Linux (CLI + Web) | Supported |
 
 ## License
 

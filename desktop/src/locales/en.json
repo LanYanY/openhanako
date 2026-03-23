@@ -977,6 +977,7 @@
     "newFolder": "New Folder",
     "ctx": {
       "open": "Open",
+      "download": "Download",
       "openInFinder": "Open Folder",
       "rename": "Rename",
       "copyPath": "Copy Path",

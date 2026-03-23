@@ -9,6 +9,7 @@ import {
   deskFullPath,
   deskMoveFiles,
   deskRemoveFile,
+  deskUploadWebFiles,
 } from '../../stores/desk-actions';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { toSlash } from '../../utils/format';
@@ -56,11 +57,13 @@ async function handleExternalDropToFolder(
   if (!droppedFiles || droppedFiles.length === 0) return;
 
   const paths: string[] = [];
+  const webFiles: File[] = [];
   for (const f of Array.from(droppedFiles)) {
     const p = window.platform?.getFilePath?.(f);
     if (p) paths.push(p);
+    else webFiles.push(f);
   }
-  if (paths.length === 0) return;
+  if (paths.length === 0 && webFiles.length === 0) return;
 
   const curDirNorm = toSlash(curDir).replace(/\/+$/, '') + '/';
   const internalNames: string[] = [];
@@ -90,6 +93,10 @@ async function handleExternalDropToFolder(
       body: JSON.stringify({ action: 'upload', dir: basePath || undefined, subdir, paths: externalPaths }),
     });
     loadDeskFiles(curPath || '');
+  }
+
+  if (webFiles.length > 0) {
+    await deskUploadWebFiles(webFiles);
   }
 }
 
@@ -166,7 +173,22 @@ export function DeskFileItem({
       items.push({ label: tFn('desk.ctx.open'), action: () => loadDeskFiles(sub) });
       items.push({ label: tFn('desk.ctx.openInFinder'), action: () => { const p = deskFullPath(file.name); if (p) window.platform?.showInFinder?.(p); } });
     } else {
-      items.push({ label: tFn('desk.ctx.open'), action: () => { const p = deskFullPath(file.name); if (p) window.platform?.openFile?.(p); } });
+      items.push({
+        label: tFn('desk.ctx.open'),
+        action: () => {
+          const p = deskFullPath(file.name);
+          if (!p) return;
+          const ext = file.name.split('.').pop()?.toLowerCase() || '';
+          openFilePreview(p, file.name, ext);
+        },
+      });
+      items.push({
+        label: tFn('desk.ctx.download'),
+        action: () => {
+          const p = deskFullPath(file.name);
+          if (p) window.platform?.startDrag?.(p);
+        },
+      });
     }
     if (!bulkNames) {
       items.push({ label: tFn('desk.ctx.rename'), action: () => onRenameStart(file.name) });

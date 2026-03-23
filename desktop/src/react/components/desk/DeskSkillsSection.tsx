@@ -11,13 +11,15 @@ const DESK_SKILLS_KEY = 'hana-desk-skills-collapsed';
 
 export function DeskSkillsSection() {
   const skills = useStore(s => s.deskSkills);
+  const currentAgentId = useStore(s => s.currentAgentId);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(DESK_SKILLS_KEY) === '1',
   );
 
   const loadDeskSkillsFn = useCallback(async () => {
     try {
-      const res = await hanaFetch('/api/skills');
+      const qs = currentAgentId ? `?agentId=${encodeURIComponent(currentAgentId)}` : '';
+      const res = await hanaFetch(`/api/skills${qs}`);
       const data = await res.json();
       const all = (data.skills || []) as Array<{
         name: string; enabled: boolean; hidden?: boolean;
@@ -32,7 +34,7 @@ export function DeskSkillsSection() {
         })),
       );
     } catch { /* ignore */ }
-  }, []);
+  }, [currentAgentId]);
 
   useEffect(() => {
     loadDeskSkillsFn();
@@ -70,7 +72,30 @@ export function DeskSkillsSection() {
   const enabledCount = skills.filter(s => s.enabled).length;
   const t = window.t ?? ((p: string) => p);
 
-  if (skills.length === 0) return null;
+  if (skills.length === 0) {
+    return (
+      <div className={s.skillsSection}>
+        <button className={s.skillsHeader} onClick={toggleCollapse}>
+          <span>{t('desk.skills')}</span>
+          <span className={s.skillsCount}>0</span>
+          <svg
+            className={`${s.skillsChevron}${collapsed ? '' : ` ${s.skillsChevronOpen}`}`}
+            width="10" height="10" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          >
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+        {!collapsed && (
+          <div className={s.skillsList}>
+            <div className={s.skillItem}>
+              <span className={s.skillName}>{t('desk.cwdSkillsEmpty')}</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={s.skillsSection}>
