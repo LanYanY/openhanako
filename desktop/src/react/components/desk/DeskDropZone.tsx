@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import {
   deskCurrentDir,
   deskUploadFiles,
+  deskUploadWebFiles,
   deskCreateFile,
   deskMkdir,
 } from '../../stores/desk-actions';
@@ -58,12 +59,16 @@ export function DeskDropZone({ children, onShowMenu }: { children: React.ReactNo
 
     if (files && files.length > 0) {
       const paths: string[] = [];
+      const webFiles: File[] = [];
       for (const f of Array.from(files)) {
         const p = window.platform?.getFilePath?.(f);
         if (p) paths.push(p);
+        else webFiles.push(f);
       }
       if (paths.length > 0) {
         await deskUploadFiles(paths);
+      } else if (webFiles.length > 0) {
+        await deskUploadWebFiles(webFiles);
       }
     } else if (text) {
       await deskCreateFile(text);

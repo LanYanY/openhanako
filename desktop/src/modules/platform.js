@@ -161,13 +161,71 @@
 
     // 系统对话框 → Web 降级（使用服务端工作空间，不读取浏览器本地目录）
     selectFolder: async () => {
-      try {
-        const res = await apiFetch("/api/config");
-        if (!res.ok) return null;
-        const cfg = await res.json();
-        return cfg?.desk?.home_folder || cfg?.last_cwd || cfg?.cwd_history?.[0] || null;
-      } catch {}
-      return null;
+      const w = openPopup("hana-folder-picker", "about:blank", "width=760,height=620,resizable=yes,scrollbars=yes");
+      if (!w) return null;
+      const esc = (s) => String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[c]));
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>Select Folder</title>
+        <style>body{font-family:system-ui,-apple-system,sans-serif;margin:0;background:#0f1115;color:#eaeef5}
+        .bar{display:flex;gap:8px;padding:10px;border-bottom:1px solid #2a2f3a}
+        button{background:#2a6df4;border:none;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer}
+        button.sec{background:#2a2f3a}.list{padding:10px;max-height:470px;overflow:auto}
+        .item{padding:8px 10px;border-radius:8px;cursor:pointer}.item:hover{background:#202531}
+        .path{padding:8px 10px;font-size:12px;color:#9aa4b2;border-top:1px solid #2a2f3a;word-break:break-all}
+        .hint{padding:10px;color:#9aa4b2;font-size:13px}</style></head>
+        <body><div class="bar"><button id="up" class="sec">⬆</button><button id="choose">选择当前目录</button></div>
+        <div id="list" class="list"></div><div id="path" class="path"></div></body></html>`);
+      const doc = w.document;
+      const listEl = doc.getElementById("list");
+      const pathEl = doc.getElementById("path");
+      const upBtn = doc.getElementById("up");
+      const chooseBtn = doc.getElementById("choose");
+      let current = "";
+      let parent = "";
+      let done = false;
+      const finish = (val) => {
+        if (done) return;
+        done = true;
+        try { w.close(); } catch {}
+        return val;
+      };
+      const loadDir = async (dir) => {
+        const qs = dir ? `?dir=${encodeURIComponent(dir)}` : "";
+        const res = await apiFetch(`/api/desk/folders${qs}`);
+        if (!res.ok) throw new Error("load failed");
+        const data = await res.json();
+        current = data.current || "";
+        parent = data.parent || "";
+        pathEl.textContent = current || "";
+        listEl.innerHTML = "";
+        const folders = Array.isArray(data.folders) ? data.folders : [];
+        if (!folders.length) {
+          const hint = doc.createElement("div");
+          hint.className = "hint";
+          hint.textContent = "当前目录下没有可进入的子目录";
+          listEl.appendChild(hint);
+        }
+        for (const f of folders) {
+          const row = doc.createElement("div");
+          row.className = "item";
+          row.innerHTML = "📁 " + esc(f.name) + `<div style="font-size:11px;color:#98a2b3">${esc(f.path)}</div>`;
+          row.onclick = () => loadDir(f.path).catch(() => {});
+          listEl.appendChild(row);
+        }
+      };
+      await loadDir("");
+      upBtn.onclick = () => { if (parent) loadDir(parent).catch(() => {}); };
+      chooseBtn.onclick = () => { done = true; };
+      return await new Promise((resolve) => {
+        const timer = setInterval(() => {
+          if (done) {
+            clearInterval(timer);
+            resolve(finish(current) || null);
+          } else if (w.closed) {
+            clearInterval(timer);
+            resolve(null);
+          }
+        }, 200);
+      });
     },
     selectSkill: async () => {
       try {

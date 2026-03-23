@@ -6,25 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            target: dmg
-            arch: arm64
-          - os: macos-latest
-            target: dmg
-            arch: x64
-          - os: windows-latest
-            target: nsis
-            arch: x64
-          - os: ubuntu-latest
-            target: AppImage
-            arch: x64
-
-    runs-on: ${{ matrix.os }}
+  build-linux:
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -38,28 +21,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Windows: 下载 MinGit 用于打包进安装包
-      - name: Download MinGit
-        if: runner.os == 'Windows'
-        run: node scripts/download-git-portable.js
-
       - name: Build renderer
         run: npm run build:renderer
 
-      # macOS 打包
-      - name: Build macOS DMG
-        if: runner.os == 'macOS'
-        run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      # Windows 打包
-      - name: Build Windows installer
-        if: runner.os == 'Windows'
-        run: npx electron-builder --win nsis --publish never
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: Run tests
+        run: npm test
 
       # Linux 打包
       - name: Build Linux AppImage
@@ -73,16 +39,17 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer-${{ matrix.os }}-${{ matrix.arch }}
+          name: linux-web-cli-build
           path: |
-            dist/*.dmg
-            dist/*.exe
-            dist/*.AppImage
+            desktop/dist-renderer/**
+            scripts/launch-web.js
+            scripts/launch.js
+            server/**
           if-no-files-found: error
 
-  # 双平台构建完成后，自动创建 GitHub Release 并上传安装包
+  # 构建完成后创建 release 并上传 Linux Web/CLI 产物
   release:
-    needs: build
+    needs: build-linux
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -114,6 +81,6 @@ jobs:
           prerelease: ${{ steps.check.outputs.prerelease == 'true' }}
           generate_release_notes: true
           files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.exe
-            artifacts/**/*.AppImage
+            artifacts/**/*dist-renderer*/**
+            artifacts/**/*launch-web.js
+            artifacts/**/*launch.js

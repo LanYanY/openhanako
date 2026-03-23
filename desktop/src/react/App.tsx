@@ -65,6 +65,44 @@ window.__hanaLog = function (level: string, module: string, message: string) {
   }).catch(err => console.warn('[hanaLog] log upload failed:', err));
 };
 
+// ── 控制台错误/警告上报（便于复现后回传日志） ──
+(() => {
+  if ((window as any).__hanaConsolePatched) return;
+  (window as any).__hanaConsolePatched = true;
+
+  const rawError = console.error.bind(console);
+  const rawWarn = console.warn.bind(console);
+  const lastSeen = new Map<string, number>();
+  const DEDUP_MS = 1200;
+
+  const toText = (args: unknown[]) => args
+    .map((a) => {
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    })
+    .join(' ')
+    .slice(0, 2000);
+
+  const report = (level: 'error' | 'warn', args: unknown[]) => {
+    const text = toText(args);
+    if (!text) return;
+    const now = Date.now();
+    const prev = lastSeen.get(`${level}:${text}`) || 0;
+    if (now - prev < DEDUP_MS) return;
+    lastSeen.set(`${level}:${text}`, now);
+    window.__hanaLog?.(level, 'console', text);
+  };
+
+  console.error = (...args: unknown[]) => {
+    report('error', args);
+    rawError(...args);
+  };
+  console.warn = (...args: unknown[]) => {
+    report('warn', args);
+    rawWarn(...args);
+  };
+})();
+
 // ── 全局错误捕获 ──
 window.addEventListener('error', (e) => {
   window.__hanaLog?.('error', 'desktop', `${e.message} at ${e.filename}:${e.lineno}`);

@@ -261,14 +261,7 @@ try {
   } else {
     // 独立运行模式：按接口模式启动
     const interfaceMode = (process.env.HANA_INTERFACE || "cli").toLowerCase();
-    if (interfaceMode === "tui") {
-      startTUI({
-        port: actualPort,
-        token: SERVER_TOKEN,
-        agentName: engine.agentName,
-        userName: engine.userName,
-      });
-    } else if (interfaceMode !== "none") {
+    if (interfaceMode !== "none") {
       startCLI({
         port: actualPort,
         token: SERVER_TOKEN,

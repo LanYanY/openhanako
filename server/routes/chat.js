@@ -43,6 +43,32 @@ export default async function chatRoute(app, { engine, hub }) {
   const sessionState = new Map(); // sessionPath -> shared stream state
   const lastUserPrompt = new Map(); // sessionPath -> last user text
 
+  function resolveCurrentModelCreds() {
+    const model = engine.currentModel;
+    const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
+    const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
+    return {
+      modelId: model?.id || "",
+      api: resolved?.api || cfgCreds.api || "",
+      api_key: resolved?.api_key || cfgCreds.api_key || "",
+      base_url: resolved?.base_url || cfgCreds.base_url || "",
+    };
+  }
+
+  async function tryDirectProviderFallback(promptText) {
+    if (!promptText?.trim()) return null;
+    const creds = resolveCurrentModelCreds();
+    if (!(creds.modelId && creds.api && creds.api_key && creds.base_url)) return null;
+    const text = await callProviderText({
+      api: creds.api,
+      api_key: creds.api_key,
+      base_url: creds.base_url,
+      model: creds.modelId,
+      messages: [{ role: "user", content: promptText }],
+    });
+    return text || null;
+  }
+
   function cancelDisconnectAbort() {
     if (disconnectAbortTimer) {
       clearTimeout(disconnectAbortTimer);
@@ -153,7 +179,7 @@ export default async function chatRoute(app, { engine, hub }) {
   }
 
   // 单订阅：事件只写入一次，再按需广播到所有连接中的客户端。
-  hub.subscribe((event, sessionPath) => {
+  hub.subscribe(async (event, sessionPath) => {
     const isActive = sessionPath === engine.currentSessionPath;
     const ss = sessionPath ? getState(sessionPath) : null;
 
@@ -246,25 +272,11 @@ export default async function chatRoute(app, { engine, hub }) {
         }
         (async () => {
           try {
-            const model = engine.currentModel;
-            const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
-            const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
-            const creds = {
-              api: resolved?.api || cfgCreds.api || "",
-              api_key: resolved?.api_key || cfgCreds.api_key || "",
-              base_url: resolved?.base_url || cfgCreds.base_url || "",
-            };
-            if (!(model?.id && creds.api && creds.api_key && creds.base_url)) {
+            const text = await tryDirectProviderFallback(promptText);
+            if (!text) {
               broadcast({ type: "error", message: errorMsg });
               return;
             }
-            const text = await callProviderText({
-              api: creds.api,
-              api_key: creds.api_key,
-              base_url: creds.base_url,
-              model: model.id,
-              messages: [{ role: "user", content: promptText }],
-            });
             emitStreamEvent(sessionPath, ss, { type: "text_delta", delta: text });
             emitStreamEvent(sessionPath, ss, { type: "turn_end" });
           } catch (fbErr) {
@@ -486,7 +498,18 @@ export default async function chatRoute(app, { engine, hub }) {
 
       // 空回复检测：本轮没有文本输出也没有工具调用，提示用户检查配置
       if (!ss.hasOutput && !ss.hasToolCall && isActive) {
-        broadcast({ type: "error", message: t("error.modelNoResponse") });
+        const promptText = lastUserPrompt.get(sessionPath) || "";
+        try {
+          const fallbackText = await tryDirectProviderFallback(promptText);
+          if (fallbackText) {
+            emitStreamEvent(sessionPath, ss, { type: "text_delta", delta: fallbackText });
+            ss.hasOutput = true;
+          } else {
+            broadcast({ type: "error", message: t("error.modelNoResponse") });
+          }
+        } catch {
+          broadcast({ type: "error", message: t("error.modelNoResponse") });
+        }
       }
 
       emitStreamEvent(sessionPath, ss, { type: "turn_end" });
@@ -717,22 +740,8 @@ export default async function chatRoute(app, { engine, hub }) {
           // provider 直连兜底：某些第三方网关在 SDK 路径偶发空响应，这里尝试直接调用兼容接口
           if (canDirectFallback) {
             try {
-              const model = engine.currentModel;
-              const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
-              const resolved = model?.provider ? engine._resolveProviderCredentials(model.provider) : null;
-              const creds = {
-                api: resolved?.api || cfgCreds.api || "",
-                api_key: resolved?.api_key || cfgCreds.api_key || "",
-                base_url: resolved?.base_url || cfgCreds.base_url || "",
-              };
-              if (model?.id && creds.api && creds.api_key && creds.base_url) {
-                const fallbackText = await callProviderText({
-                  api: creds.api,
-                  api_key: creds.api_key,
-                  base_url: creds.base_url,
-                  model: model.id,
-                  messages: [{ role: "user", content: promptText }],
-                });
+              const fallbackText = await tryDirectProviderFallback(promptText);
+              if (fallbackText) {
                 emitStreamEvent(promptSessionPath, ss, { type: "text_delta", delta: fallbackText });
                 emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
                 broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });

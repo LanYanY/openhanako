@@ -75,7 +75,8 @@ export function connectWebSocket(port?: string, token?: string): void {
       if (typeof payload !== 'string') {
         payload = String(payload ?? '');
       }
-      const msg = JSON.parse(payload);
+      const payloadText = payload as string;
+      const msg = JSON.parse(payloadText);
       handleServerMessage(msg);
     } catch (err) {
       console.error('[ws] message parse error:', err);

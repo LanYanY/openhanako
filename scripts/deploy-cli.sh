@@ -4,7 +4,6 @@ set -euo pipefail
 # Hanako CLI 一键部署脚本
 # 用法:
 #   bash scripts/deploy-cli.sh
-#   bash scripts/deploy-cli.sh --mode tui
 #   bash scripts/deploy-cli.sh --mode web
 #   bash scripts/deploy-cli.sh --skip-install --no-start
 
@@ -36,7 +35,7 @@ while [[ $# -gt 0 ]]; do
 Hanako CLI 一键部署脚本
 
 Options:
-  --mode <cli|tui|server|web>  启动模式（默认 cli）
+  --mode <cli|server|web>  启动模式（默认 cli）
   --skip-install           跳过 npm ci
   --no-start               只部署不启动
   --rebuild                强制重建 renderer（web 模式）
@@ -51,8 +50,8 @@ EOF
   esac
 done
 
-if [[ "$MODE" != "cli" && "$MODE" != "tui" && "$MODE" != "server" && "$MODE" != "web" ]]; then
-  echo "[deploy-cli] invalid mode: $MODE (expected: cli|tui|server|web)" >&2
+if [[ "$MODE" != "cli" && "$MODE" != "server" && "$MODE" != "web" ]]; then
+  echo "[deploy-cli] invalid mode: $MODE (expected: cli|server|web)" >&2
   exit 1
 fi
 
