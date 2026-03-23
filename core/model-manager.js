@@ -337,7 +337,8 @@ export class ModelManager {
   resolveUtilityConfig(agentConfig, sharedModels, utilApi) {
     if (!this.executionRouter) {
       const utility = sharedModels?.utility || agentConfig?.models?.utility;
-      const utilityLarge = sharedModels?.utility_large || agentConfig?.models?.utility_large;
+      const allowLargeFallback = process.env.HANA_ALLOW_UTILITY_LARGE_FALLBACK === "1";
+      const utilityLarge = sharedModels?.utility_large || agentConfig?.models?.utility_large || (allowLargeFallback ? utility : null);
       if (!utility) throw new Error("未配置 utility 模型，请在设置中添加");
       if (!utilityLarge) throw new Error("未配置 utility_large 模型");
 

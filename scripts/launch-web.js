@@ -13,7 +13,9 @@ const ensure = spawnSync(process.execPath, ["scripts/ensure-native.cjs"], {
   stdio: "inherit",
   env: process.env,
 });
-if (ensure.status !== 0) process.exit(ensure.status ?? 1);
+if (ensure.status !== 0) {
+  console.warn("[web] warning: ensure-native failed, continuing startup (you can run `npm run rebuild`).");
+}
 
 const rendererDir = path.join(projectRoot, "desktop", "dist-renderer");
 if (!fs.existsSync(path.join(rendererDir, "index.html"))) {
@@ -28,7 +30,7 @@ const serverInfoPath = path.join(hanakoHome, "server-info.json");
 
 const serverProc = spawn(process.execPath, ["server/index.js"], {
   cwd: projectRoot,
-  env: { ...process.env, HANA_INTERFACE: "none" },
+  env: { ...process.env, HANA_INTERFACE: "none", HANA_ALLOW_UTILITY_LARGE_FALLBACK: process.env.HANA_ALLOW_UTILITY_LARGE_FALLBACK || "1" },
   stdio: ["ignore", "inherit", "inherit", "ipc"],
 });
 

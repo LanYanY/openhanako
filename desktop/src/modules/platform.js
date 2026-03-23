@@ -159,13 +159,13 @@
     getAvatarPath: () => null,
     getSplashInfo: async () => ({}),
 
-    // 系统对话框 → Web 降级
+    // 系统对话框 → Web 降级（使用服务端工作空间，不读取浏览器本地目录）
     selectFolder: async () => {
       try {
-        if ("showDirectoryPicker" in window) {
-          const handle = await window.showDirectoryPicker();
-          return handle?.name ? `[web-folder] ${handle.name}` : null;
-        }
+        const res = await apiFetch("/api/config");
+        if (!res.ok) return null;
+        const cfg = await res.json();
+        return cfg?.desk?.home_folder || cfg?.last_cwd || cfg?.cwd_history?.[0] || null;
       } catch {}
       return null;
     },

@@ -92,9 +92,8 @@ Hanako now supports running without Electron GUI:
 npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server/web)
 npm run cli          # Full command-line chat shell (no GUI)
 npm run tui          # Terminal UI mode (full-screen TUI)
-npm run web:start    # Build renderer + start web mode in one command
-npm run build:renderer && node scripts/launch.js web
-                     # Browser mode: serves desktop React UI on web
+npm run web          # Start web mode (after renderer has been built once)
+npm run web:start    # Build renderer + start web mode (first-time / after frontend changes)
 ```
 
 The CLI, TUI, and Web mode all connect to the same server + engine routes used by the desktop app, so capabilities stay aligned with desktop behavior.

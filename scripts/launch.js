@@ -40,6 +40,7 @@ switch (mode) {
     args = ["server/index.js", ...extra];
     break;
   case "web":
+    process.env.HANA_ALLOW_UTILITY_LARGE_FALLBACK = process.env.HANA_ALLOW_UTILITY_LARGE_FALLBACK || "1";
     bin = process.execPath;
     args = ["scripts/launch-web.js", ...extra];
     break;
@@ -60,7 +61,7 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 if (["cli", "tui", "server", "web"].includes(mode)) {
   const ensure = spawnSync(process.execPath, ["scripts/ensure-native.cjs"], { stdio: "inherit", env: process.env });
   if (ensure.status !== 0) {
-    process.exit(ensure.status ?? 1);
+    console.warn("[launch] warning: ensure-native failed, continuing startup (you can run `npm run rebuild`).");
   }
 }
 

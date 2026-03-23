@@ -100,9 +100,8 @@ chmod +x Hanako-*-Linux-*.AppImage
 npm run deploy:cli   # 一键部署并启动命令行版（可加 -- --mode tui/server/web）
 npm run cli          # 完整命令行交互（无 GUI）
 npm run tui          # 终端全屏 TUI
-npm run web:start    # 一条命令完成构建并启动 Web 模式
-npm run build:renderer && node scripts/launch.js web
-                     # 浏览器模式：直接复用桌面端 React UI
+npm run web          # 启动 Web 模式（前提是已构建过 renderer）
+npm run web:start    # 一条命令完成构建并启动 Web（首次或前端代码变更后）
 ```
 
 CLI、TUI、Web 模式都连接同一套 server + engine 路由，与桌面端能力保持一致。

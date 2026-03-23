@@ -11,6 +11,7 @@ set -euo pipefail
 MODE="cli"
 SKIP_INSTALL=0
 NO_START=0
+REBUILD=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
       NO_START=1
       shift
       ;;
+    --rebuild)
+      REBUILD=1
+      shift
+      ;;
     -h|--help)
       cat <<'EOF'
 Hanako CLI 一键部署脚本
@@ -34,6 +39,7 @@ Options:
   --mode <cli|tui|server|web>  启动模式（默认 cli）
   --skip-install           跳过 npm ci
   --no-start               只部署不启动
+  --rebuild                强制重建 renderer（web 模式）
   -h, --help               显示帮助
 EOF
       exit 0
@@ -73,8 +79,12 @@ if ! node scripts/ensure-native.cjs; then
 fi
 
 if [[ "$MODE" == "web" ]]; then
-  echo "[deploy-cli] building renderer for web mode..."
-  npm run build:renderer
+  if [[ "$REBUILD" -eq 1 || ! -f "desktop/dist-renderer/index.html" ]]; then
+    echo "[deploy-cli] building renderer for web mode..."
+    npm run build:renderer
+  else
+    echo "[deploy-cli] renderer already exists, skip build (use --rebuild to force)"
+  fi
 fi
 
 if [[ "$NO_START" -eq 1 ]]; then
