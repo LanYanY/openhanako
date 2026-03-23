@@ -19,6 +19,7 @@ import os from "os";
 import { t } from "../i18n.js";
 
 const MAX_FILES = 9;
+const MAX_WEB_FILE_BYTES = 20 * 1024 * 1024;
 
 /** 递归统计路径中的文件数量（文件夹递归计数内部文件，普通文件计 1） */
 function countFiles(p) {
@@ -53,6 +54,58 @@ function cleanOldUploads(uploadsDir) {
 }
 
 export default async function uploadRoute(app, { engine }) {
+  function getUploadsDir() {
+    const cwd = engine.cwd;
+    const isRealCwd = cwd !== process.cwd();
+    const uploadsDir = isRealCwd
+      ? path.join(cwd, ".hanako-uploads")
+      : path.join(os.tmpdir(), ".hanako-uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    cleanOldUploads(uploadsDir);
+    return uploadsDir;
+  }
+
+  // Web 文件上传（浏览器 File 对象经 base64 发送）
+  app.post("/api/upload-web", async (req, reply) => {
+    const files = req.body?.files;
+    if (!Array.isArray(files) || files.length === 0) {
+      return reply.code(400).send({ error: t("error.pathsRequired") });
+    }
+    if (files.length > MAX_FILES) {
+      return reply.code(400).send({ error: t("error.tooManyFiles", { max: MAX_FILES, n: files.length }) });
+    }
+
+    const uploadsDir = getUploadsDir();
+    const results = [];
+
+    for (const f of files) {
+      try {
+        const name = String(f?.name || "upload.bin");
+        const base64 = String(f?.contentBase64 || "");
+        if (!base64) {
+          results.push({ src: name, error: "missing contentBase64" });
+          continue;
+        }
+        const buf = Buffer.from(base64, "base64");
+        if (buf.byteLength > MAX_WEB_FILE_BYTES) {
+          results.push({ src: name, error: `file too large (> ${MAX_WEB_FILE_BYTES} bytes)` });
+          continue;
+        }
+        const ext = path.extname(name);
+        const base = path.basename(name, ext);
+        const timestamp = Date.now().toString(36);
+        const safeName = `${base}_${timestamp}${ext}`;
+        const destPath = path.join(uploadsDir, safeName);
+        fs.writeFileSync(destPath, buf);
+        results.push({ src: name, dest: destPath, name, isDirectory: false });
+      } catch (err) {
+        results.push({ src: f?.name || "unknown", error: err.message });
+      }
+    }
+
+    return { uploads: results, uploadsDir };
+  });
+
   app.post("/api/upload", async (req, reply) => {
     const { paths } = req.body || {};
     if (!Array.isArray(paths) || paths.length === 0) {
@@ -73,16 +126,7 @@ export default async function uploadRoute(app, { engine }) {
     }
 
     // 确定 uploads 目录
-    const cwd = engine.cwd;
-    const isRealCwd = cwd !== process.cwd();
-    const uploadsDir = isRealCwd
-      ? path.join(cwd, ".hanako-uploads")
-      : path.join(os.tmpdir(), ".hanako-uploads");
-
-    fs.mkdirSync(uploadsDir, { recursive: true });
-
-    // 清理超过 24 小时的旧上传文件
-    cleanOldUploads(uploadsDir);
+    const uploadsDir = getUploadsDir();
 
     const results = [];
 

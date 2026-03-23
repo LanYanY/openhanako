@@ -45,6 +45,7 @@ import { ConfirmStore } from "../lib/confirm-store.js";
 import { BridgeManager } from "../lib/bridge/bridge-manager.js";
 import { Hub } from "../hub/index.js";
 import { startCLI } from "./cli.js";
+import { startTUI } from "./tui.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -258,13 +259,23 @@ try {
       }
     });
   } else {
-    // 独立运行模式：启动 CLI
-    startCLI({
-      port: actualPort,
-      token: SERVER_TOKEN,
-      agentName: engine.agentName,
-      userName: engine.userName,
-    });
+    // 独立运行模式：按接口模式启动
+    const interfaceMode = (process.env.HANA_INTERFACE || "cli").toLowerCase();
+    if (interfaceMode === "tui") {
+      startTUI({
+        port: actualPort,
+        token: SERVER_TOKEN,
+        agentName: engine.agentName,
+        userName: engine.userName,
+      });
+    } else if (interfaceMode !== "none") {
+      startCLI({
+        port: actualPort,
+        token: SERVER_TOKEN,
+        agentName: engine.agentName,
+        userName: engine.userName,
+      });
+    }
   }
 
 } catch (err) {
