@@ -54,6 +54,54 @@ function rmDirSync(dir) {
 }
 
 export default async function skillsRoute(app, { engine }) {
+  const roots = () => ([
+    path.resolve(engine.skillsDir),
+    path.resolve(engine.userSkillsDir),
+    ...engine.getExternalSkillPaths().map((p) => path.resolve(p)),
+  ]);
+  const isSafeSkillPath = (p) => {
+    const rp = path.resolve(p || "");
+    return roots().some((root) => rp === root || rp.startsWith(root + path.sep));
+  };
+
+  app.get("/api/skills/tree", async (req, reply) => {
+    const baseDir = req.query?.baseDir;
+    if (!baseDir) return reply.code(400).send({ error: "missing baseDir" });
+    if (!isSafeSkillPath(baseDir)) return reply.code(403).send({ error: "path not allowed" });
+    const walk = (dir) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true })
+        .filter((e) => !e.name.startsWith("."))
+        .sort((a, b) => {
+          if (a.isDirectory() && !b.isDirectory()) return -1;
+          if (!a.isDirectory() && b.isDirectory()) return 1;
+          return a.name.localeCompare(b.name);
+        });
+      return entries.map((e) => {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) return { name: e.name, isDir: true, children: walk(p) };
+        return { name: e.name, path: p, isDir: false };
+      });
+    };
+    try {
+      return { files: walk(baseDir) };
+    } catch (err) {
+      reply.code(500);
+      return { error: err.message };
+    }
+  });
+
+  app.get("/api/skills/read", async (req, reply) => {
+    const filePath = req.query?.path;
+    if (!filePath) return reply.code(400).send({ error: "missing path" });
+    if (!isSafeSkillPath(filePath)) return reply.code(403).send({ error: "path not allowed" });
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return reply.code(400).send({ error: "file required" });
+      reply.type("text/plain").send(fs.readFileSync(filePath, "utf-8"));
+    } catch {
+      reply.code(404).send({ error: "file not found" });
+    }
+  });
 
   app.get("/api/skills", async (req, reply) => {
     try {

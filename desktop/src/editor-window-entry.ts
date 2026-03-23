@@ -165,7 +165,7 @@ const markdownDecoPlugin = ViewPlugin.fromClass(
 
 /* ── Editor window logic ── */
 
-const hana = (window as any).hana;
+const hana = (window as any).hana || (window as any).platform;
 const titleEl = document.getElementById('editorTitle')!;
 const bodyEl = document.getElementById('editorBody')!;
 const btnDock = document.getElementById('btnDock')!;
@@ -255,12 +255,28 @@ async function loadContent(data: { filePath: string; title: string; type: string
   });
 }
 
-// IPC: 接收编辑器数据
-hana?.onEditorLoad((data: any) => loadContent(data));
+// IPC: 接收编辑器数据（Electron）
+hana?.onEditorLoad?.((data: any) => loadContent(data));
+
+// Web 多窗口：通过 URL payload 直接加载
+try {
+  const q = new URLSearchParams(location.search);
+  const payload = q.get('payload');
+  if (payload) {
+    const data = JSON.parse(decodeURIComponent(payload));
+    if (data?.filePath) loadContent(data);
+  }
+} catch {}
 
 // 工具栏按钮
-btnDock.addEventListener('click', () => hana?.editorDock?.());
-btnClose.addEventListener('click', () => hana?.editorClose?.());
+btnDock.addEventListener('click', () => {
+  if (hana?.editorDock) hana.editorDock();
+  else window.close();
+});
+btnClose.addEventListener('click', () => {
+  if (hana?.editorClose) hana.editorClose();
+  else window.close();
+});
 
 // 主题同步
 const saved = localStorage.getItem('hana-theme') || 'auto';

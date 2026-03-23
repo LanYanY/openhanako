@@ -215,6 +215,9 @@ async function init(): Promise<void> {
   window.hana?.onShowSkillViewer?.((data: any) => {
     useStore.setState({ skillViewerData: data });
   });
+  window.addEventListener('hana:show-skill-viewer', (e: any) => {
+    if (e?.detail) useStore.setState({ skillViewerData: e.detail });
+  });
 
   // 21. 通知 app ready
   platform.appReady();
