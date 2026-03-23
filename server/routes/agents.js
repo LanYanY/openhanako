@@ -51,6 +51,10 @@ function mask(key) {
 }
 
 export default async function agentsRoute(app, { engine }) {
+  const EMPTY_PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z3x8AAAAASUVORK5CYII=",
+    "base64",
+  );
 
   // ════════════════════════════
   //  列表 / 创建 / 切换 / 删除 / 主助手
@@ -172,8 +176,9 @@ export default async function agentsRoute(app, { engine }) {
         return reply.send(buf);
       } catch {}
     }
-    reply.code(404);
-    return { error: "no avatar" };
+    reply.header("Content-Type", "image/png");
+    reply.header("Cache-Control", "no-cache");
+    return reply.send(EMPTY_PNG);
   });
 
   app.post("/api/agents/:id/avatar", { bodyLimit: 15 * 1024 * 1024 }, async (req, reply) => {

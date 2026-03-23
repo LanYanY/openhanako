@@ -274,6 +274,10 @@ export default async function chatRoute(app, { engine, hub }) {
           try {
             const text = await tryDirectProviderFallback(promptText);
             if (!text) {
+              if (ss?.hasToolCall) {
+                emitStreamEvent(sessionPath, ss, { type: "turn_end" });
+                return;
+              }
               broadcast({ type: "error", message: errorMsg });
               return;
             }
@@ -743,6 +747,11 @@ export default async function chatRoute(app, { engine, hub }) {
               const fallbackText = await tryDirectProviderFallback(promptText);
               if (fallbackText) {
                 emitStreamEvent(promptSessionPath, ss, { type: "text_delta", delta: fallbackText });
+                emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
+                broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
+                return;
+              }
+              if (ss?.hasToolCall && isEmptyLlm) {
                 emitStreamEvent(promptSessionPath, ss, { type: "turn_end" });
                 broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
                 return;
