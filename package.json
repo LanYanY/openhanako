@@ -38,7 +38,8 @@
     "test:watch": "vitest",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "tui": "node scripts/launch.js tui",
-    "web": "node scripts/launch.js web"
+    "web": "node scripts/launch.js web",
+    "deploy:cli": "bash scripts/deploy-cli.sh"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",

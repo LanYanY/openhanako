@@ -52,6 +52,17 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 
 ## Quick Start
 
+### Quickstart (5 minutes)
+
+```bash
+git clone https://github.com/liliMozi/openhanako.git
+cd openhanako
+npm ci
+npm run deploy:cli
+```
+
+After startup, follow the onboarding wizard to configure provider/base URL/model, then start chatting.
+
 ### Download
 
 **macOS (Apple Silicon):** download the latest `.dmg` from [Releases](https://github.com/liliMozi/openhanako/releases).
@@ -78,6 +89,7 @@ On first launch, an onboarding wizard will guide you through setup: choose a lan
 Hanako now supports running without Electron GUI:
 
 ```bash
+npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server)
 npm run cli          # Full command-line chat shell (no GUI)
 npm run tui          # Terminal UI mode (full-screen TUI)
 npm run build:renderer && npm run web

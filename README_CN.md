@@ -59,6 +59,17 @@ OpenHanako 是一个更加易用的 AI agent，有记忆，有性格，会主动
 
 ## 快速开始
 
+### Quickstart（5 分钟）
+
+```bash
+git clone https://github.com/liliMozi/openhanako.git
+cd openhanako
+npm ci
+npm run deploy:cli
+```
+
+启动后按引导完成 provider / base URL / 模型配置，即可开始使用。
+
 ### 下载安装
 
 **macOS (Apple Silicon)**：从 [Releases](https://github.com/liliMozi/openhanako/releases) 下载最新 `.dmg`。
@@ -86,6 +97,7 @@ chmod +x Hanako-*-Linux-*.AppImage
 现在支持不依赖 Electron 图形窗口运行：
 
 ```bash
+npm run deploy:cli   # 一键部署并启动命令行版（可加 -- --mode tui/server）
 npm run cli          # 完整命令行交互（无 GUI）
 npm run tui          # 终端全屏 TUI
 npm run build:renderer && npm run web
