@@ -38,6 +38,8 @@ export default async function chatRoute(app, { engine, hub }) {
   let activeWsClients = 0;
   let disconnectAbortTimer = null;
   const DISCONNECT_ABORT_GRACE_MS = 15_000;
+  const PROMPT_TIMEOUT_MS = Number(process.env.HANA_PROMPT_TIMEOUT_MS || 180_000);
+  const FIRST_TOKEN_TIMEOUT_MS = Number(process.env.HANA_FIRST_TOKEN_TIMEOUT_MS || 25_000);
   const sessionState = new Map(); // sessionPath -> shared stream state
   const lastUserPrompt = new Map(); // sessionPath -> last user text
 
@@ -682,13 +684,38 @@ export default async function chatRoute(app, { engine, hub }) {
           ss.titlePreview = "";
           beginSessionStream(ss);
           broadcast({ type: "status", isStreaming: true, sessionPath: promptSessionPath });
-          await hub.send(promptText, msg.images ? { images: msg.images, sessionPath: promptSessionPath } : { sessionPath: promptSessionPath });
+          await Promise.race([
+            new Promise((resolve, reject) => {
+              ss.hasOutput = false;
+              ss.hasToolCall = false;
+              const firstTokenTimer = setTimeout(() => {
+                if (!ss.hasOutput && !ss.hasToolCall) {
+                  reject(new Error(`first token timeout after ${Math.floor(FIRST_TOKEN_TIMEOUT_MS / 1000)}s`));
+                }
+              }, FIRST_TOKEN_TIMEOUT_MS);
+              hub.send(
+                promptText,
+                msg.images ? { images: msg.images, sessionPath: promptSessionPath } : { sessionPath: promptSessionPath },
+              )
+                .then(resolve)
+                .catch(reject)
+                .finally(() => clearTimeout(firstTokenTimer));
+            }),
+            new Promise((_, reject) => {
+              setTimeout(() => reject(new Error(`prompt timeout after ${Math.floor(PROMPT_TIMEOUT_MS / 1000)}s`)), PROMPT_TIMEOUT_MS);
+            }),
+          ]);
           broadcast({ type: "status", isStreaming: false, sessionPath: promptSessionPath });
         } catch (err) {
           const msg = err?.message || String(err);
+          const isTimeout = msg.includes("prompt timeout") || msg.includes("first token timeout");
+          if (isTimeout) {
+            await engine.abortSessionByPath(promptSessionPath).catch(() => {});
+          }
           const isEmptyLlm = msg.includes(t("error.llmEmptyResponse")) || msg.includes("模型未返回任何内容");
+          const canDirectFallback = isEmptyLlm || msg.includes("first token timeout");
           // provider 直连兜底：某些第三方网关在 SDK 路径偶发空响应，这里尝试直接调用兼容接口
-          if (isEmptyLlm) {
+          if (canDirectFallback) {
             try {
               const model = engine.currentModel;
               const cfgCreds = model?.provider ? (loadGlobalProviders().providers?.[model.provider] || {}) : {};
