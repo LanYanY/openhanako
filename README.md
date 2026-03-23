@@ -55,7 +55,7 @@ As a tool, it is powerful: it remembers everything you've said, operates your co
 ### Quickstart (5 minutes)
 
 ```bash
-git clone https://github.com/liliMozi/openhanako.git
+git clone https://github.com/LanYanY/openhanako.git
 cd openhanako
 npm ci
 npm run deploy:cli
