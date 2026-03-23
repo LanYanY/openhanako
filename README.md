@@ -89,14 +89,16 @@ On first launch, an onboarding wizard will guide you through setup: choose a lan
 Hanako now supports running without Electron GUI:
 
 ```bash
-npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server)
+npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server/web)
 npm run cli          # Full command-line chat shell (no GUI)
 npm run tui          # Terminal UI mode (full-screen TUI)
-npm run build:renderer && npm run web
+npm run build:renderer && node scripts/launch.js web
                      # Browser mode: serves desktop React UI on web
 ```
 
 The CLI, TUI, and Web mode all connect to the same server + engine routes used by the desktop app, so capabilities stay aligned with desktop behavior.
+
+> Note: Vite may print “Some chunks are larger than 500 kB after minification.” This is a warning, not a build failure.
 
 ## Architecture
 

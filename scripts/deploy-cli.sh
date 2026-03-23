@@ -5,6 +5,7 @@ set -euo pipefail
 # 用法:
 #   bash scripts/deploy-cli.sh
 #   bash scripts/deploy-cli.sh --mode tui
+#   bash scripts/deploy-cli.sh --mode web
 #   bash scripts/deploy-cli.sh --skip-install --no-start
 
 MODE="cli"
@@ -30,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 Hanako CLI 一键部署脚本
 
 Options:
-  --mode <cli|tui|server>  启动模式（默认 cli）
+  --mode <cli|tui|server|web>  启动模式（默认 cli）
   --skip-install           跳过 npm ci
   --no-start               只部署不启动
   -h, --help               显示帮助
@@ -44,8 +45,8 @@ EOF
   esac
 done
 
-if [[ "$MODE" != "cli" && "$MODE" != "tui" && "$MODE" != "server" ]]; then
-  echo "[deploy-cli] invalid mode: $MODE (expected: cli|tui|server)" >&2
+if [[ "$MODE" != "cli" && "$MODE" != "tui" && "$MODE" != "server" && "$MODE" != "web" ]]; then
+  echo "[deploy-cli] invalid mode: $MODE (expected: cli|tui|server|web)" >&2
   exit 1
 fi
 
@@ -67,12 +68,19 @@ if [[ "$SKIP_INSTALL" -eq 0 ]]; then
 fi
 
 echo "[deploy-cli] checking native modules..."
-node scripts/ensure-native.cjs
+if ! node scripts/ensure-native.cjs; then
+  echo "[deploy-cli] warning: native check failed, you can try: npm run rebuild" >&2
+fi
+
+if [[ "$MODE" == "web" ]]; then
+  echo "[deploy-cli] building renderer for web mode..."
+  npm run build:renderer
+fi
 
 if [[ "$NO_START" -eq 1 ]]; then
-  echo "[deploy-cli] done. start later with: npm run $MODE"
+  echo "[deploy-cli] done. start later with: node scripts/launch.js $MODE"
   exit 0
 fi
 
 echo "[deploy-cli] starting Hanako ($MODE)..."
-npm run "$MODE"
+node scripts/launch.js "$MODE"
