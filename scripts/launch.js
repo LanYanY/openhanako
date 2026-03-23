@@ -42,5 +42,12 @@ if (["cli", "server", "web"].includes(mode)) {
   }
 }
 
+if (["cli", "tui", "server", "web"].includes(mode)) {
+  const ensure = spawnSync(process.execPath, ["scripts/ensure-native.cjs"], { stdio: "inherit", env: process.env });
+  if (ensure.status !== 0) {
+    console.warn("[launch] warning: ensure-native failed, continuing startup (you can run `npm run rebuild`).");
+  }
+}
+
 const child = spawn(bin, args, { stdio: "inherit", env: process.env });
 child.on("exit", (code) => process.exit(code ?? 1));

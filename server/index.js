@@ -45,6 +45,7 @@ import { ConfirmStore } from "../lib/confirm-store.js";
 import { BridgeManager } from "../lib/bridge/bridge-manager.js";
 import { Hub } from "../hub/index.js";
 import { startCLI } from "./cli.js";
+import { startTUI } from "./tui.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
