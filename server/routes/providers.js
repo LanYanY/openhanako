@@ -18,7 +18,13 @@ async function requestWithCurlFallback(url, { method = "GET", headers = {}, body
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const text = await res.text();
+    let text = "";
+    if (typeof res.text === "function") {
+      text = await res.text();
+    } else if (typeof res.json === "function") {
+      const json = await res.json();
+      text = JSON.stringify(json);
+    }
     return { ok: res.ok, status: res.status, text };
   } catch (err) {
     const code = err?.cause?.code || "";
@@ -252,7 +258,7 @@ export default async function providersRoute(app, { engine }) {
       }
     }
 
-    if (!base_url) {
+    if (!effectiveBaseUrl) {
       reply.code(400);
       return { error: "base_url is required for remote model fetch" };
     }
@@ -291,7 +297,7 @@ export default async function providersRoute(app, { engine }) {
     }
 
     try {
-      const url = base_url.replace(/\/+$/, "") + "/models";
+      const url = effectiveBaseUrl.replace(/\/+$/, "") + "/models";
       let headers = { "Content-Type": "application/json" };
       if (key) {
         if (!api) {

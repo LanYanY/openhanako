@@ -336,7 +336,37 @@ export class ModelManager {
    */
   resolveUtilityConfig(agentConfig, sharedModels, utilApi) {
     if (!this.executionRouter) {
-      throw new Error(t("error.noUtilityModel"));
+      const utility = sharedModels?.utility || agentConfig?.models?.utility;
+      const utilityLarge = sharedModels?.utility_large || agentConfig?.models?.utility_large;
+      if (!utility) throw new Error("未配置 utility 模型，请在设置中添加");
+      if (!utilityLarge) throw new Error("未配置 utility_large 模型");
+
+      const provider = this.inferModelProvider(utility);
+      if (utilApi?.provider && provider && utilApi.provider !== provider) {
+        throw new Error(`utility_api.provider 必须与模型 "${utility}" 的 provider 一致`);
+      }
+      const providerCfg = provider ? agentConfig?.providers?.[provider] : null;
+      const creds = utilApi?.provider
+        ? {
+            api_key: utilApi.api_key || "",
+            base_url: utilApi.base_url || "",
+            api: utilApi.api || "openai-completions",
+          }
+        : {
+            ...this.resolveProviderCredentials(provider, agentConfig),
+            api_key: providerCfg?.api_key || this.resolveProviderCredentials(provider, agentConfig).api_key || "",
+            base_url: providerCfg?.base_url || this.resolveProviderCredentials(provider, agentConfig).base_url || "",
+            api: providerCfg?.api || this.resolveProviderCredentials(provider, agentConfig).api || "",
+          };
+
+      return {
+        utility,
+        utility_large: utilityLarge,
+        provider: utilApi?.provider || provider,
+        api_key: creds.api_key || "",
+        base_url: creds.base_url || "",
+        api: creds.api || "",
+      };
     }
     return this.executionRouter.resolveUtilityConfig(agentConfig, sharedModels, utilApi);
   }
