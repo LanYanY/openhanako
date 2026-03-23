@@ -138,6 +138,14 @@ export default async function configRoute(app, { engine }) {
       // providers 块 → 全局 providers.yaml
       let providersChanged = false;
       if (partial.providers) {
+        // 将 providers.<name>.api_key 同步写入 auth.json（供 Pi SDK ModelRegistry.getApiKey 使用）
+        try {
+          for (const [name, cfg] of Object.entries(partial.providers)) {
+            if (cfg && typeof cfg === "object" && typeof cfg.api_key === "string" && cfg.api_key.trim()) {
+              engine.authStorage?.set?.(name, { type: "api_key", key: cfg.api_key.trim() });
+            }
+          }
+        } catch {}
         // 删除 provider 时（值为 null），同步清理 models.json + favorites
         const deletedProviders = Object.keys(partial.providers)
           .filter(name => partial.providers[name] === null);
@@ -192,6 +200,9 @@ export default async function configRoute(app, { engine }) {
           if (block.api_key) provUpdate.api_key = block.api_key;
           if (block.base_url) provUpdate.base_url = block.base_url;
           saveGlobalProviders({ providers: { [provName]: provUpdate } });
+          if (block.api_key) {
+            try { engine.authStorage?.set?.(provName, { type: "api_key", key: block.api_key }); } catch {}
+          }
           block.api_key = "";
           block.base_url = "";
           providersChanged = true;
