@@ -622,6 +622,10 @@ export default async function chatRoute(app, { engine, hub }) {
         debugLog()?.log("ws", `user message (${promptText.length} chars, ${msg.images?.length || 0} images)`);
         // Phase 2: 客户端可指定 sessionPath，否则用焦点 session
         const promptSessionPath = msg.sessionPath || engine.currentSessionPath;
+        if (!promptSessionPath) {
+          wsSend(ws, { type: "error", message: t("error.sessionNotFound") });
+          return;
+        }
         if (engine.isSessionStreaming(promptSessionPath)) {
           wsSend(ws, { type: "error", message: t("error.stillStreaming", { name: engine.agentName }) });
           return;

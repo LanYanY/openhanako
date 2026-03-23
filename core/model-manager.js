@@ -211,7 +211,8 @@ export class ModelManager {
    * @returns {object} 新模型对象
    */
   setModel(modelId) {
-    const model = this._availableModels.find(m => m.id === modelId);
+    const model = this._availableModels.find(m => m.id === modelId)
+      || this._buildAdhocModelFromProviders(modelId);
     if (!model) throw new Error(t("error.modelNotFound", { id: modelId }));
     this._sessionModel = model;
     return model;
@@ -239,7 +240,8 @@ export class ModelManager {
     }
 
     // fallback：从 _availableModels 查找（覆盖 Catalog 未索引到的情况）
-    const model = this._availableModels.find(m => m.id === ref || m.name === ref);
+    const model = this._availableModels.find(m => m.id === ref || m.name === ref)
+      || this._buildAdhocModelFromProviders(ref);
     if (!model) throw new Error(t("error.modelNotFound", { id: ref }));
     return model;
   }
@@ -253,6 +255,32 @@ export class ModelManager {
       if (entry) return entry.providerId;
     }
     return this._availableModels.find(m => m.id === modelId)?.provider || null;
+  }
+
+  /**
+   * 当模型不在 SDK/Registry 列表时，尝试从 providers.yaml 的 models 字段构建临时模型对象
+   * 以支持自定义 provider + 自定义 modelId（例如第三方 OpenAI 兼容网关）。
+   */
+  _buildAdhocModelFromProviders(modelId) {
+    if (!modelId) return null;
+    try {
+      const providers = loadGlobalProviders().providers || {};
+      for (const [provider, cfg] of Object.entries(providers)) {
+        const list = Array.isArray(cfg?.models) ? cfg.models : [];
+        if (!list.includes(modelId)) continue;
+        if (!cfg?.base_url || !cfg?.api) continue;
+        return {
+          id: modelId,
+          name: modelId,
+          provider,
+          baseUrl: cfg.base_url,
+          api: cfg.api,
+          input: ["text", "image"],
+          contextWindow: 128_000,
+        };
+      }
+    } catch {}
+    return null;
   }
 
   /**
