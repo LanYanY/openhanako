@@ -92,6 +92,7 @@ Hanako now supports running without Electron GUI:
 npm run deploy:cli   # One-click deploy + start CLI (supports -- --mode tui/server/web)
 npm run cli          # Full command-line chat shell (no GUI)
 npm run tui          # Terminal UI mode (full-screen TUI)
+npm run web:start    # Build renderer + start web mode in one command
 npm run build:renderer && node scripts/launch.js web
                      # Browser mode: serves desktop React UI on web
 ```
@@ -99,6 +100,10 @@ npm run build:renderer && node scripts/launch.js web
 The CLI, TUI, and Web mode all connect to the same server + engine routes used by the desktop app, so capabilities stay aligned with desktop behavior.
 
 > Note: Vite may print “Some chunks are larger than 500 kB after minification.” This is a warning, not a build failure.
+>
+> If you see `Missing script: "deploy:cli"` on an older checkout, run:
+> `bash scripts/deploy-cli.sh --mode web --skip-install --no-start`
+> then `node scripts/launch.js web`.
 
 ## Architecture
 

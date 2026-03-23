@@ -39,6 +39,7 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "tui": "node scripts/launch.js tui",
     "web": "node scripts/launch.js web",
+    "web:start": "npm run build:renderer && node scripts/launch.js web",
     "deploy:cli": "bash scripts/deploy-cli.sh"
   },
   "dependencies": {

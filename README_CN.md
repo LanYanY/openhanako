@@ -100,6 +100,7 @@ chmod +x Hanako-*-Linux-*.AppImage
 npm run deploy:cli   # 一键部署并启动命令行版（可加 -- --mode tui/server/web）
 npm run cli          # 完整命令行交互（无 GUI）
 npm run tui          # 终端全屏 TUI
+npm run web:start    # 一条命令完成构建并启动 Web 模式
 npm run build:renderer && node scripts/launch.js web
                      # 浏览器模式：直接复用桌面端 React UI
 ```
@@ -107,6 +108,10 @@ npm run build:renderer && node scripts/launch.js web
 CLI、TUI、Web 模式都连接同一套 server + engine 路由，与桌面端能力保持一致。
 
 > 说明：Vite 输出 `Some chunks are larger than 500 kB after minification` 属于体积告警，不是构建失败。
+>
+> 如果你在旧版本仓库中遇到 `Missing script: "deploy:cli"`，可改用：
+> `bash scripts/deploy-cli.sh --mode web --skip-install --no-start`
+> 然后执行 `node scripts/launch.js web`。
 
 ## 架构
 
